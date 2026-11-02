@@ -11,3 +11,5 @@ data/*.db-*
 agent.md
 # Generated content plans
 data/plans/*.json
+data/videos/
+
