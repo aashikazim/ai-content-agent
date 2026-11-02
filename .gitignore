@@ -8,3 +8,6 @@ data/*.db-*
 *.mp4
 *.wav
 *.log
+agent.md
+# Generated content plans
+data/plans/*.json
