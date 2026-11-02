@@ -10,6 +10,8 @@ from app.models.content_plan import ContentPlan
 from tests.test_content_plan import valid_data
 
 
+
+
 def test_agent_generates_plan():
     video = Video(
         video_id="test123",
@@ -47,3 +49,48 @@ def test_empty_video_list():
 
     with pytest.raises(ValueError):
         agent.create_plan([])
+
+
+
+def test_content_agent_retries_long_narration():
+    from datetime import datetime, timezone
+    from app.models.video import Video
+
+    video = Video(
+        video_id="abc",
+        title="Science Topic",
+        category_id="28",
+        channel="Example",
+        published_at=datetime.now(timezone.utc),
+        duration_seconds=45,
+        views=1000,
+        likes=50,
+        comments=10,
+        url="https://youtube.com/watch?v=abc"
+    )
+
+    invalid = valid_data()
+    invalid["scenes"][0]["narration"] = (
+        " ".join(["word"] * 100)
+    )
+
+    valid = valid_data()
+
+    llm = Mock()
+    llm.generate_plan.side_effect = [
+        ContentPlan.model_validate(invalid),
+        ContentPlan.model_validate(valid)
+    ]
+
+    agent = ContentAgent(
+        llm=llm,
+        max_attempts=3
+    )
+
+    plan = agent.create_plan(
+        [video], category="science"
+    )
+
+    assert plan.review_status == "draft"
+    assert llm.generate_plan.call_count == 2
+
