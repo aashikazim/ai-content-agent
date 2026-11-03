@@ -4,6 +4,42 @@
 
 AI Content Agent discovers YouTube trends, develops original short-form content plans, generates narration and visual scenes, renders vertical MP4 videos, and presents them for **manual review and manual publishing**. The project runs on an NVIDIA DGX Spark and combines Python services, a LangGraph workflow, FastAPI, SQLite, and a Streamlit dashboard.
 
+The primary interface is now a local **React Content Studio** served by FastAPI. One administrator signs in with a username and password; browser review and publishing do not require entering API keys. The existing Streamlit pages and command-line tools remain available.
+
+## Web dashboard and admin login
+
+Use Python 3.12 and Node.js 22.12+ (Node 22 LTS is suitable). From the repository root with the Python virtual environment active:
+
+```bash
+# One-time local account setup. Password entry is hidden; minimum 12 characters.
+python scripts/setup_admin.py --username admin
+
+# Install the locked frontend dependencies and build the dashboard.
+cd frontend
+npm ci
+npm run build
+cd ..
+
+# Serve both UI and API from the same local address.
+uvicorn server:app --host 127.0.0.1 --port 8000
+```
+
+Open **http://127.0.0.1:8000** and sign in. For a remote DGX, forward port 8000 over SSH and open the forwarded localhost URL. Node is only needed to develop/build the frontend; the built dashboard is served by Python. Rebuild after changing frontend source.
+
+- **Overview:** actual job counts, recent content, publication status, and latest collected analytics. Empty states are shown when no data exists.
+- **Review Queue:** authenticated video playback, scene images, script/storyboard, available provenance, and an explicit review checklist. Approval and rejection only update review state.
+- **Publishing:** approved videos, destination selection, dry-run validation by default, a separate live-upload confirmation, and publication history. Any existing job/platform attempt blocks another upload; uncertain outcomes require reconciliation.
+
+There is exactly one locally configured admin account, with no public registration or web password-reset endpoint. To replace its credentials and revoke all sessions, run `python scripts/setup_admin.py --username admin --reset`. Credentials are scrypt-hashed in the gitignored `credentials/admin.json`, written with owner-only permissions. Session tokens are random and stored hashed in additive SQLite auth tables. Browser cookies are HttpOnly, SameSite=Strict, expire after 12 hours by default, and use Secure over HTTPS. Failed sign-ins are throttled. State-changing browser requests require a session-bound CSRF token; the UI handles it automatically.
+
+Optional settings: `ADMIN_CREDENTIALS_FILE`, `ADMIN_SESSION_HOURS` (1–168), `ADMIN_COOKIE_SECURE=true` when using HTTPS, and `CONTENT_PLANS_DIR`. Keep the service bound to localhost. No admin password or session token is included in the frontend build, URLs, or browser storage.
+
+For frontend development, run the API as above and `npm run dev` inside `frontend/`; Vite binds to 127.0.0.1 and proxies `/api` to the local API. Run frontend checks with `npm test` and `npm run build`. Production does not need the Vite server.
+
+Existing scheduler requests still use `CONTENT_API_KEY`. Manual API review now requires `X-Review-Key: CONTENT_REVIEW_API_KEY`; publishing requires `X-Publish-Key: CONTENT_PUBLISH_API_KEY`, or an authenticated browser session with CSRF protection. A generation key alone cannot approve or publish. Browser live publishing additionally requires `confirmed: true`; dry runs remain the default. No publishing endpoint is called by approval.
+
+YouTube resumable uploads continue through acknowledged chunks, but failed chunk requests are not automatically retried, including HTTP 5xx responses. The existing reservation remains for reconciliation; a new upload attempt requires human intervention.
+
 > **Current status (November 2026):** Days 1–7 have been implemented in stages. Core services and automated tests are in place, but the complete scheduled-generation-to-publication workflow still requires end-to-end verification. Visual quality is a known limitation: the existing `text` mode creates text-based scenes, while `diffusion` mode depends on local image-model setup. Real stock footage, neural narration, and scene regeneration are planned improvements. Facebook Page authorization is not yet confirmed working.
 
 ## Features
@@ -55,6 +91,7 @@ flowchart TD
 | Video processing | FFmpeg / FFprobe |
 | Scheduler | APScheduler 3.x |
 | Dashboard | Streamlit, pandas, Plotly |
+| Web dashboard | React, Vite; served by FastAPI with single-admin sessions |
 | Publishing | YouTube Data API, Meta Graph API |
 | Analytics | YouTube Data API and YouTube Analytics API |
 | Development machine | NVIDIA DGX Spark (ARM64 / NVIDIA GB10) |
@@ -102,11 +139,13 @@ ai-content-agent/
 ├── pages/
 │   ├── 1_Review_Queue.py
 │   └── 2_Publishing.py
+├── frontend/                    # React studio; npm ci && npm run build
 ├── scripts/
 │   ├── youtube_auth.py
 │   ├── migrate_day6.py
 │   ├── reconcile_publications.py
-│   └── run_scheduled_job.py
+│   ├── run_scheduled_job.py
+│   └── setup_admin.py            # Local-only account setup/reset
 ├── tests/
 ├── data/                        # Generated local data; do not commit secrets
 ├── credentials/                 # OAuth files; gitignored
@@ -379,7 +418,9 @@ python -m pytest tests/test_scheduler.py -v
 python -m pytest tests/test_review_dashboard.py -v
 ```
 
-The latest shared run had **44 passed and 1 failed**; the remaining failure was traced to an empty `api_key=""` being replaced by `CONTENT_API_KEY` through Python's `or` operator. The recommended correction is to use the environment fallback **only when `api_key is None`**. A full passing run after that change has not yet been confirmed in the conversation.
+The pre-dashboard audit baseline was **45 passed**. The empty scheduler-key fallback is already fixed. New admin/dashboard tests cover authentication, CSRF, cookie-protected video playback, manual approval, publishing confirmation, duplicate prevention, and uncertain upload reconciliation. All tests use temporary credentials/databases and mock external uploads. Run the full suite for the current result.
+
+Dashboard implementation verification: **124 Python tests and 8 frontend tests passed**; production frontend build passed; npm dependency audit reported zero advisories. Headless Chrome checks used a temporary SQLite database and synthetic local media to verify desktop/mobile login, decoded video playback, scene previews, approval without publishing, dry-run validation, cancellation of live confirmation, navigation, and logout. No live platform upload was tested.
 
 Tests use mocks for platform services and cannot prove that live OAuth, Meta permissions, scheduled workflow execution, GPU image generation, or remote platform publishing work end to end.
 

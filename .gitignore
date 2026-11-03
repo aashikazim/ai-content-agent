@@ -8,7 +8,9 @@ data/*.db-*
 *.mp4
 *.wav
 *.log
-agent.md
+AGENTS.md
+CODEX_BACKLOG.md
+PROJECT_CONTEXT.md
 # Generated content plans
 data/plans/*.json
 data/videos/
@@ -17,3 +19,9 @@ data/videos/
 credentials/
 token.json
 client_secret*.json
+
+# Local browser dashboard builds and development dependencies
+frontend/node_modules/
+frontend/dist/
+frontend/coverage/
+frontend/test-results/

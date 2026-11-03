@@ -1,13 +1,11 @@
 
 import os
-import time
 from pathlib import Path
 
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
-from googleapiclient.errors import HttpError
 
 
 SCOPES = [
@@ -109,26 +107,12 @@ class YouTubePublisher:
         )
 
         response = None
-        retries = 0
 
         while response is None:
-            try:
-                _, response = request.next_chunk()
-                retries = 0
-            except HttpError as exc:
-                if exc.resp.status not in {
-                    500, 502, 503, 504
-                }:
-                    raise
-
-                retries += 1
-
-                if retries > 5:
-                    raise
-
-                time.sleep(
-                    min(2 ** retries, 30)
-                )
+            # Advance acknowledged chunks only. Any error can leave the remote
+            # outcome uncertain; PublishingService reserves it for reconciliation.
+            # Never repeat a failed next_chunk() call automatically.
+            _, response = request.next_chunk()
 
         video_id = response.get("id")
 

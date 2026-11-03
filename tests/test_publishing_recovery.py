@@ -116,3 +116,33 @@ def test_processing_youtube_video():
     )
 
     assert result["status"] == "processing"
+
+
+@pytest.mark.parametrize("error_type", ["server_error", "timeout"])
+def test_youtube_uncertain_chunk_is_never_retried(tmp_path, error_type):
+    from googleapiclient.errors import HttpError
+    from httplib2 import Response
+
+    path = tmp_path / "fixture.mp4"
+    path.write_bytes(b"test-video")
+    client = Mock()
+    request = client.videos.return_value.insert.return_value
+    error = (
+        HttpError(Response({"status": "503"}), b'{"error":"unavailable"}')
+        if error_type == "server_error" else TimeoutError("uncertain upload")
+    )
+    request.next_chunk.side_effect = error
+    with pytest.raises(type(error)):
+        YouTubePublisher(client).upload(path, "Fixture", "Description")
+    request.next_chunk.assert_called_once()
+
+
+def test_youtube_advances_acknowledged_resumable_chunks(tmp_path):
+    path = tmp_path / "fixture.mp4"
+    path.write_bytes(b"test-video")
+    client = Mock()
+    request = client.videos.return_value.insert.return_value
+    request.next_chunk.side_effect = [(None, None), (None, {"id": "fixture-id"})]
+    result = YouTubePublisher(client).upload(path, "Fixture", "Description")
+    assert result["video_id"] == "fixture-id"
+    assert request.next_chunk.call_count == 2
