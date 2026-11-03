@@ -27,12 +27,27 @@ class ContentAgent:
         self,
         videos,
         category="mixed",
-        language="English"
+        language="English",
+        target_duration_seconds=None,
+        aspect_ratio="9:16",
+        visual_style="cinematic",
+        max_scenes=12,
+        topic="",
+        supplied_script="",
     ):
-        if not videos:
+        if not videos and not topic.strip() and not supplied_script.strip():
             raise ValueError(
                 "No videos available for planning"
             )
+
+        if target_duration_seconds is not None and not 30 <= target_duration_seconds <= 60:
+            raise ValueError("Local content plans require a 30–60 second target")
+        if not 1 <= max_scenes <= 12:
+            raise ValueError("max_scenes must be between 1 and 12")
+        target = (
+            f"exactly {target_duration_seconds} seconds"
+            if target_duration_seconds is not None else "approximately 45 seconds"
+        )
 
         candidates = videos[:5]
 
@@ -45,6 +60,10 @@ class ContentAgent:
             )
             for video in candidates
         )
+        if topic.strip():
+            source_text = "User-selected topic:\n" + topic
+        elif supplied_script.strip():
+            source_text = "User-provided script to adapt while retaining its intent:\n" + supplied_script
 
         wpm = self.narration_service.wpm
 
@@ -54,8 +73,9 @@ Create ONE original short-form video plan.
 Category: {category}
 Language: {language}
 Platforms: YouTube Shorts and Facebook Reels
-Target duration: approximately 45 seconds
-Video format: vertical 9:16
+Target duration: {target}
+Video aspect ratio: {aspect_ratio}
+Visual style: {visual_style.replace('_', ' ')}
 
 Trending topic signals:
 {source_text}
@@ -78,7 +98,8 @@ Content requirements:
 - Generate an original explanation.
 - Do not copy existing video scripts.
 - Avoid unsupported factual claims.
-- Create 4-6 scenes.
+- Create {min(4, max_scenes)}-{min(6, max_scenes)} scenes.
+- Never exceed {max_scenes} scenes.
 - Total duration must be 30-60 seconds.
 - Provide narration, visual prompt,
   visual type and on-screen text per scene.
@@ -88,7 +109,7 @@ Content requirements:
 - Return valid JSON matching the schema.
 """
 
-        last_issues = []
+        last_feedback = ""
 
         for attempt in range(
             1, self.max_attempts + 1
@@ -100,8 +121,14 @@ Content requirements:
                     plan
                 )
             )
-
-            if not issues:
+            planning_issues = []
+            if target_duration_seconds is not None and plan.total_duration != target_duration_seconds:
+                planning_issues.append(
+                    f"Total duration is {plan.total_duration}s; it must be exactly {target_duration_seconds}s."
+                )
+            if len(plan.scenes) > max_scenes:
+                planning_issues.append(f"Plan has {len(plan.scenes)} scenes; maximum is {max_scenes}.")
+            if not issues and not planning_issues:
                 plan.source_video_ids = [
                     video.video_id
                     for video in candidates
@@ -109,16 +136,13 @@ Content requirements:
                 plan.review_status = "draft"
                 return plan
 
-            last_issues = issues
-
-            feedback = (
-                self.narration_service.format_issues(
-                    issues
-                )
-            )
+            feedback = "\n".join(filter(None, [
+                self.narration_service.format_issues(issues), *planning_issues
+            ]))
+            last_feedback = feedback
 
             print(
-                f"Narration validation failed "
+                f"Content timing validation failed "
                 f"(attempt {attempt}/"
                 f"{self.max_attempts}):"
             )
@@ -126,21 +150,19 @@ Content requirements:
 
             prompt += f"""
 
-Previous generated script exceeded
-the narration word budget:
+The previous plan did not meet the timing or scene requirements:
 
 {feedback}
 
 Generate a revised COMPLETE content plan.
 Shorten narration in the affected scenes.
 Keep total duration between 30 and 60 seconds.
+Respect the selected target duration and scene limit above.
 """
 
         raise ValueError(
             "Unable to generate a narration-safe "
             "script after "
             f"{self.max_attempts} attempts:\n"
-            + self.narration_service.format_issues(
-                last_issues
-            )
+            + last_feedback
         )

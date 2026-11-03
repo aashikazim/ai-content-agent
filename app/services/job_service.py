@@ -1,9 +1,14 @@
 
+import json
 import sqlite3
 import uuid
 
 from datetime import datetime, timezone
 from pathlib import Path
+
+from app.models.generation_config import GenerationConfig
+from app.services.generation_storage import GenerationStorage
+from app.services.provider_catalog import validate_for_execution
 
 
 class JobService:
@@ -15,6 +20,7 @@ class JobService:
         )
 
         self.initialize()
+        GenerationStorage(self.db_path)
 
     def connect(self):
         conn = sqlite3.connect(
@@ -48,8 +54,28 @@ class JobService:
         category="mixed",
         region="US",
         limit=20,
-        image_mode="text"
+        image_mode="text",
+        generation_config=None,
+        script_quote_id=None,
+        script_cost_confirmed=False,
+        actor=None,
     ):
+        legacy_request = generation_config is None
+        config = (
+            GenerationConfig.from_legacy(image_mode)
+            if legacy_request else GenerationConfig.model_validate(generation_config)
+        )
+        validate_for_execution(config)
+        script_service = None
+        script_request = None
+        if config.script_provider == "openai":
+            from app.services.script_generation_service import ScriptGenerationService
+            if not actor:
+                raise ValueError("Paid script generation requires an authenticated administrator")
+            script_service = ScriptGenerationService(self.db_path)
+            script_request = script_service.request(
+                config, category=category, region=region, limit=limit, purpose="video"
+            )
         job_id = str(uuid.uuid4())
         now = datetime.now(
             timezone.utc
@@ -68,22 +94,43 @@ class JobService:
                 category,
                 region,
                 limit,
-                image_mode,
+                config.image_mode,
                 "queued",
                 now,
                 now
             ))
+            GenerationStorage.save_for_job(
+                conn, job_id, config, legacy_request=legacy_request
+            )
+            if script_service:
+                script_service.reserve(
+                    conn, script_request, actor, job_id=job_id,
+                    quote_id=script_quote_id, confirmed=script_cost_confirmed,
+                )
 
         return job_id
 
     def get_job(self, job_id):
         with self.connect() as conn:
             row = conn.execute(
-                "SELECT * FROM jobs WHERE job_id = ?",
+                "SELECT j.*, c.config_json AS saved_generation_config, "
+                "c.legacy_request FROM jobs j LEFT JOIN job_generation_configs c "
+                "ON c.job_id = j.job_id WHERE j.job_id = ?",
                 (job_id,)
             ).fetchone()
 
-        return dict(row) if row else None
+        return self._decode_job(row) if row else None
+
+    @staticmethod
+    def _decode_job(row):
+        job = dict(row)
+        saved = job.pop("saved_generation_config", None)
+        legacy = job.pop("legacy_request", None)
+        job["generation_config_source"] = (
+            "legacy" if legacy or saved is None else "configured"
+        )
+        job["generation_config"] = json.loads(saved) if saved else None
+        return job
 
     def update_job(
         self,
@@ -156,19 +203,23 @@ class JobService:
         with self.connect() as conn:
             if status:
                 rows = conn.execute("""
-                    SELECT *
-                    FROM jobs
-                    WHERE status = ?
-                    ORDER BY created_at DESC
+                    SELECT j.*, c.config_json AS saved_generation_config,
+                           c.legacy_request
+                    FROM jobs j LEFT JOIN job_generation_configs c
+                    ON c.job_id = j.job_id
+                    WHERE j.status = ?
+                    ORDER BY j.created_at DESC
                     LIMIT ?
                 """, (status, limit)).fetchall()
             else:
                 rows = conn.execute("""
-                    SELECT *
-                    FROM jobs
-                    ORDER BY created_at DESC
+                    SELECT j.*, c.config_json AS saved_generation_config,
+                           c.legacy_request
+                    FROM jobs j LEFT JOIN job_generation_configs c
+                    ON c.job_id = j.job_id
+                    ORDER BY j.created_at DESC
                     LIMIT ?
                 """, (limit,)).fetchall()
 
-        return [dict(row) for row in rows]
+        return [self._decode_job(row) for row in rows]
 

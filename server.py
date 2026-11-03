@@ -5,7 +5,8 @@ from pathlib import Path
 load_dotenv()
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.exceptions import RequestValidationError
 from fastapi.staticfiles import StaticFiles
 from app.api.routes import router
 from app.api.admin_routes import router as admin_router
@@ -18,6 +19,16 @@ app = FastAPI(
     ),
     version="0.8.0"
 )
+
+
+@app.exception_handler(RequestValidationError)
+async def safe_validation_error(request: Request, exc: RequestValidationError):
+    # Pydantic's default error JSON echoes submitted values, including accidental
+    # credentials. Return useful field locations without reflecting request data.
+    return JSONResponse(status_code=422, content={"detail": [
+        {"type": error["type"], "loc": list(error["loc"]), "msg": error["msg"]}
+        for error in exc.errors()
+    ]})
 
 
 @app.middleware("http")

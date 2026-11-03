@@ -42,6 +42,43 @@ YouTube resumable uploads continue through acknowledged chunks, but failed chunk
 
 > **Current status (November 2026):** Days 1–7 have been implemented in stages. Core services and automated tests are in place, but the complete scheduled-generation-to-publication workflow still requires end-to-end verification. Visual quality is a known limitation: the existing `text` mode creates text-based scenes, while `diffusion` mode depends on local image-model setup. Real stock footage, neural narration, and scene regeneration are planned improvements. Facebook Page authorization is not yet confirmed working.
 
+## Provider selection and OpenAI scripts — Phases 1–2
+
+**Create video** is available in React and `pages/3_Create_Video.py` in Streamlit. Both use the same local single-admin API session, including CSRF protection. Streamlit's Create Video page signs into the API; existing analytics/review/publishing pages retain their existing behavior. Script and video providers are independent. All five content types are visible, with planned video capabilities labeled. Settings can be saved without running generation.
+
+| Capability | Current behavior |
+| --- | --- |
+| Local video | Realistic-short illustrated previews, 30–60 seconds; text cards or experimental diffusion, local narration, FFmpeg |
+| Output settings | New configured jobs honor 9:16, 16:9 or 1:1, 720p/1080p, 24/30 fps, duration, scene limit and style |
+| Script workshop | Local Ollama or OpenAI; outlines, narration, visual prompts, screenplay, 2–3 fictional character profiles and dialogue; immutable revision history |
+| Sources | YouTube trend signals, your topic, or a script to adapt; topic/script mode needs no YouTube key |
+| OpenAI + local video | Explicitly authorized OpenAI script followed by the existing local illustrated-video pipeline |
+| Drama/comedy/news | Short-form script drafts only; news is always unverified, comedy is fiction/satire, drama is fiction |
+| Long drama / cloud video | Settings can be saved; generation remains disabled pending later phases |
+
+Existing jobs and legacy scheduler requests preserve their prior rendering defaults. Additive SQLite tables store immutable per-job settings, reusable configuration drafts, single-use cost quotes and script attempts; existing jobs, plans and publication history are preserved. Initialization migrates these tables idempotently. Back up your database before first use of an updated version.
+
+To enable optional OpenAI scripts, set `OPENAI_API_KEY` locally in `.env` and restart FastAPI. Never paste it into the dashboard. The default catalogue model is `gpt-6.1-sol`, with `gpt-6-sol` as an explicitly selectable alternative. The adapter uses the [Responses API](https://developers.openai.com/api/reference/resources/responses/methods/create) and [strict structured output](https://developers.openai.com/api/docs/guides/structured-outputs). Local Ollama remains usable without cloud credentials. No new Python dependencies or GPU packages are required for OpenAI.
+
+In either dashboard, choose the source and script provider, then use **Script workshop** to draft or revise a script. For OpenAI, first check model access and estimate cost, then check the authorization box, then click **Generate script draft**. Selecting an existing completed draft and entering revision instructions creates a new attempt; it does not replace the original. A script draft does not create, approve or publish a video. Starting a video with OpenAI uses a separate authorization for a fresh script request, rather than automatically reusing a workshop draft.
+
+Model access is checked only on an explicit action; a configured key does not prove availability. Unavailable models produce an error and never switch providers or models automatically. Official [GPT-6.1 Sol](https://developers.openai.com/api/docs/models/gpt-6.1-sol) and [GPT-6 Sol](https://developers.openai.com/api/docs/models/gpt-6-sol) documentation was checked on November 3, 2026. Verify account access in your own project before use.
+
+Each paid script requires an administrator session, a ten-minute single-use quote bound to the exact settings/source/revision/purpose, and explicit confirmation. Current standard pricing used by the estimator is $2 per million input tokens and $10 per million output tokens, including reasoning. A conservative 65,000-input-token allowance and 8,000-output-token cap give a **$0.21 estimated token bound per script request**; the full request is limited to 60,000 UTF-8 bytes. A lower configured budget blocks submission. Provider billing remains authoritative; historical calculated token cost is stored separately from actual billed cost, which remains unknown unless reported. No video-generation cost is included or authorized.
+
+Only one paid script attempt may be queued/running at a time. Paid POSTs have no automatic retries, redirects or model fallback. Timeouts and ambiguous outcomes become `needs_reconciliation`; an identical unresolved request is blocked. Interrupted attempts older than five minutes are surfaced when history is read. Inspect history/provider usage, then explicitly close an uncertain attempt with reconciliation notes before authorizing a new request. Closing an attempt neither refunds nor resubmits it. Background execution is in-process, not a durable worker queue. React polls attempt status; Streamlit uses **Refresh script history**.
+
+API additions under `/api/v1`:
+
+- `GET /generation/catalog`, `POST /generation/preflight` and `GET/POST /generation/configurations`: provider metadata, validation and saved settings.
+- `GET /generation/openai-models`: account-access check without generation; admin session required.
+- `POST /generation/script-quotes`: estimate and account check; admin session + CSRF required.
+- `POST /generation/scripts`, `GET /generation/scripts`, `GET /generation/scripts/{attempt_id}`: explicit draft generation and history; admin session required, mutations need CSRF.
+- `POST /generation/scripts/{attempt_id}/reconcile`: human inspection notes and confirmation; admin session + CSRF required.
+- `POST /jobs` accepts optional `generation_config`; OpenAI additionally requires `script_quote_id`, `script_cost_confirmed: true`, and an admin session. A scheduler generation key cannot authorize paid scripts.
+
+`GEMINI_API_KEY` and `KLING_API_KEY` are reserved empty configuration fields. Their video adapters are still disabled. Phase 2 improves scripting; it does not add moving footage, character-reference uploads, neural voices or timed captions. Structured validation does not establish factual accuracy. Human factual/rights review, video approval and separate manual publishing remain mandatory.
+
 ## Features
 
 - **Trend discovery:** Retrieve popular YouTube videos by region and category; rank candidates using recency, engagement, and view velocity.
@@ -420,7 +457,7 @@ python -m pytest tests/test_review_dashboard.py -v
 
 The pre-dashboard audit baseline was **45 passed**. The empty scheduler-key fallback is already fixed. New admin/dashboard tests cover authentication, CSRF, cookie-protected video playback, manual approval, publishing confirmation, duplicate prevention, and uncertain upload reconciliation. All tests use temporary credentials/databases and mock external uploads. Run the full suite for the current result.
 
-Dashboard implementation verification: **124 Python tests and 8 frontend tests passed**; production frontend build passed; npm dependency audit reported zero advisories. Headless Chrome checks used a temporary SQLite database and synthetic local media to verify desktop/mobile login, decoded video playback, scene previews, approval without publishing, dry-run validation, cancellation of live confirmation, navigation, and logout. No live platform upload was tested.
+Original dashboard implementation verification: **124 Python tests and 8 frontend tests passed**; production frontend build passed; npm dependency audit reported zero advisories. Headless Chrome checks used a temporary SQLite database and synthetic local media to verify desktop/mobile login, decoded video playback, scene previews, approval without publishing, dry-run validation, cancellation of live confirmation, navigation, and logout. No live platform upload was tested.
 
 Tests use mocks for platform services and cannot prove that live OAuth, Meta permissions, scheduled workflow execution, GPU image generation, or remote platform publishing work end to end.
 
@@ -472,3 +509,5 @@ git push origin main
 ## Project direction
 
 The next development stage focuses on **content quality**, not additional publishing automation: better scene assets, natural narration, source-aware scripting, and regeneration controls inside the manual review dashboard. The intended workflow remains **automated creation → manual review → manual publishing → analytics**.
+
+Phase 2 verification: **303 Python tests passed**, including fresh/existing SQLite migrations, strict script validation, cost authorization, uncertain requests, local supplied-source planning, API authorization and Streamlit interactions. **22 frontend tests passed** and the production build passed. Chrome fixture checks verified a mocked OpenAI script submission, desktop/mobile layouts, decoded video playback, manual approval without publication, publishing dry run and live-confirmation cancellation. Paid providers and uploads were mocked; a Phase 1 test rendered and decoded actual temporary FFmpeg/espeak output. These checks do not establish live model availability or improved image/TTS quality.

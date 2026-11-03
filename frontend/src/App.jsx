@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import GenerationForm from './GenerationForm.jsx';
 const API = '/api/v1';
 const ACTIVE = new Set(['queued', 'discovering', 'planning', 'rendering']);
 const labels = {
@@ -22,6 +23,7 @@ const labels = {
 };
 const titles = {
   overview: ['Your creative command center.', 'A clear view of what’s creating, what’s ready, and what comes next.'],
+  create: ['Your next video starts here.', 'A format, a story, and the right models. Make every choice intentional.'],
   review: ['Good content. Your final call.', 'Watch the video, check the story, and decide what deserves an audience.'],
   publish: ['Ready when you are.', 'Give approved work its next chapter. Every upload starts with you.']
 };
@@ -121,7 +123,6 @@ export default function App() {
   const [refreshing, setRefreshing] = useState(false);
   const [selected, setSelected] = useState(null);
   const [mobileNav, setMobileNav] = useState(false);
-  const [generationOpen, setGenerationOpen] = useState(false);
   const [toast, setToast] = useState('');
   const liveAttempts = useRef(new Set());
   const request = useCallback(async (path, options = {}) => {
@@ -235,26 +236,24 @@ export default function App() {
       <Brand light />
       <div className="workspace-label"><span className="workspace-dot" /> YOUR WORKSPACE <span className="local-tag">LOCAL</span></div>
       <nav aria-label="Main navigation">
-        {[['overview', 'grid', 'Overview'], ['review', 'film', 'Review queue'], ['publish', 'upload', 'Publishing']].map(([id, icon, label]) => <button key={id} className={`nav-item ${page === id ? 'active' : ''}`} onClick={() => navigate(id)} aria-current={page === id ? 'page' : undefined}><Icon name={icon} /><span>{label}</span>{id === 'review' && summary.pending_review > 0 && <span className="nav-count">{summary.pending_review}</span>}{page === id && id !== 'review' && <span className="nav-active-dot" />}</button>)}
+        {[['overview', 'grid', 'Overview'], ['create', 'plus', 'Create video'], ['review', 'film', 'Review queue'], ['publish', 'upload', 'Publishing']].map(([id, icon, label]) => <button key={id} className={`nav-item ${page === id ? 'active' : ''}`} onClick={() => navigate(id)} aria-current={page === id ? 'page' : undefined}><Icon name={icon} /><span>{label}</span>{id === 'review' && summary.pending_review > 0 && <span className="nav-count">{summary.pending_review}</span>}{page === id && id !== 'review' && <span className="nav-active-dot" />}</button>)}
       </nav>
       <div className="sidebar-note"><div className="sidebar-note-icon"><Icon name="shield" size={23} /><span className="little-star">✳</span></div><h3>Created by AI.<br />Directed by you.</h3><p>You have the final say.<br />Nothing publishes on its own.</p><span className="sidebar-note-rule" /></div>
       <div className="sidebar-bottom"><div className="connection"><span />Local studio <small>DGX SPARK</small></div><div className="profile"><span className="avatar">{session.username?.slice(0, 1).toUpperCase() || 'A'}</span><div><strong>{session.username}</strong><small>Studio administrator</small></div><button onClick={logout} className="icon-button" title="Sign out" aria-label="Sign out"><Icon name="logout" size={19} /></button></div></div>
     </aside>
     <main className="main-content">
-      <header className="topbar"><div className="breadcrumb"><button className="icon-button mobile-menu" aria-label="Open navigation" onClick={() => setMobileNav(true)}><Icon name="menu" /></button><span>Workspace</span><Icon name="chevron" size={13} /><strong>{page === 'overview' ? 'Overview' : page === 'review' ? 'Review queue' : 'Publishing'}</strong></div><div className="topbar-right"><span className="private-label"><Icon name="lock" size={13} />Private workspace</span><button className={`icon-button ${refreshing ? 'rotating' : ''}`} aria-label="Refresh workspace" disabled={refreshing} onClick={() => refresh().catch(() => {})}><Icon name="refresh" size={17} /></button><span className="top-avatar">{session.username?.slice(0, 1).toUpperCase() || 'A'}</span></div></header>
+      <header className="topbar"><div className="breadcrumb"><button className="icon-button mobile-menu" aria-label="Open navigation" onClick={() => setMobileNav(true)}><Icon name="menu" /></button><span>Workspace</span><Icon name="chevron" size={13} /><strong>{{ overview: 'Overview', create: 'Create video', review: 'Review queue', publish: 'Publishing' }[page]}</strong></div><div className="topbar-right"><span className="private-label"><Icon name="lock" size={13} />Private workspace</span><button className={`icon-button ${refreshing ? 'rotating' : ''}`} aria-label="Refresh workspace" disabled={refreshing} onClick={() => refresh().catch(() => {})}><Icon name="refresh" size={17} /></button><span className="top-avatar">{session.username?.slice(0, 1).toUpperCase() || 'A'}</span></div></header>
       <div className="page-content">
-        <div className="page-heading"><div><div className="eyebrow">{page === 'overview' ? 'MAKE SOMETHING WORTH WATCHING' : page === 'review' ? 'THE HUMAN TOUCH' : 'THE FINAL STEP'}</div><h1>{titles[page][0]}</h1><p>{titles[page][1]}</p></div>{page === 'overview' && <button className="button primary" onClick={() => setGenerationOpen(true)}><Icon name="plus" size={17} />Create video</button>}</div>
+        <div className="page-heading"><div><div className="eyebrow">{{ overview: 'MAKE SOMETHING WORTH WATCHING', create: 'FROM IDEA TO FIRST FRAME', review: 'THE HUMAN TOUCH', publish: 'THE FINAL STEP' }[page]}</div><h1>{titles[page][0]}</h1><p>{titles[page][1]}</p></div>{page === 'overview' && <button className="button primary" onClick={() => navigate('create')}><Icon name="plus" size={17} />Create video</button>}</div>
         {loadError && <div className="load-error"><Notice type="error">{loadError} {data && 'Showing the last loaded data.'}</Notice><button className="button subtle" onClick={() => refresh().catch(() => {})}>Refresh</button></div>}
-        {!data ? <div className="loading-panel"><div className="spinner" /><p>Loading your workspace…</p></div> : page === 'overview' ? <Overview data={data} navigate={navigate} /> : page === 'review' ? <Review data={data} selected={selected} setSelected={setSelected} request={request} refresh={refresh} notify={setToast} /> : <Publishing data={data} selected={selected} setSelected={setSelected} request={request} refresh={refresh} notify={setToast} liveAttempts={liveAttempts.current} />}
+        {page === 'create' ? <GenerationForm request={request} onCreated={async () => {
+          setToast('Generation requested. Follow progress in the overview, then review your video.');
+          await refresh().catch(() => {});
+        }} /> : !data ? <div className="loading-panel"><div className="spinner" /><p>Loading your workspace…</p></div> : page === 'overview' ? <Overview data={data} navigate={navigate} /> : page === 'review' ? <Review data={data} selected={selected} setSelected={setSelected} request={request} refresh={refresh} notify={setToast} /> : <Publishing data={data} selected={selected} setSelected={setSelected} request={request} refresh={refresh} notify={setToast} liveAttempts={liveAttempts.current} />}
         <footer className="page-footer"><span><span className="tiny-mark">✳</span> Content Agent Studio</span><span>Original content. Human judgment.</span></footer>
       </div>
     </main>
     {toast && <div className="toast" role="status"><Icon name="check" size={19} /><span>{toast}</span><button className="icon-button" aria-label="Dismiss notification" onClick={() => setToast('')}><Icon name="close" size={16} /></button></div>}
-    {generationOpen && <GenerationModal request={request} onClose={() => setGenerationOpen(false)} onCreated={async () => {
-      setGenerationOpen(false);
-      setToast('Generation started. Your video will appear in the review queue when it’s ready.');
-      await refresh().catch(() => {});
-    }} />}
   </div>;
 }
 function Login({
@@ -423,15 +422,24 @@ function Review({
   return <><div className="queue-toolbar"><div className="segmented" aria-label="Filter videos">{[['pending_review', 'Awaiting review'], ['all', 'All videos']].map(([id, label]) => <button key={id} className={filter === id ? 'selected' : ''} onClick={() => {
           setFilter(id);
           setSelected(null);
-        }}>{label}<span>{filter === id || id === 'pending_review' ? id === 'all' ? jobs.length : jobs.filter(j => j.status === id).length : jobs.length}</span></button>)}</div><div className="search-field"><Icon name="search" size={17} /><input aria-label="Search videos" value={search} onChange={e => setSearch(e.target.value)} placeholder="Find a video…" /></div></div><div className="review-layout"><aside className="queue-list" aria-label="Video queue"><div className="queue-list-label">YOUR VIDEOS <span>{visible.length}</span></div>{visible.length ? visible.map((job, index) => <button key={job.job_id} className={`queue-card ${selected === job.job_id ? 'selected' : ''}`} onClick={() => setSelected(job.job_id)}><div className={`queue-poster poster-${index % 4}`}><Icon name="play" size={22} /><span>{job.duration_seconds ? `${job.duration_seconds}s` : '—'}</span></div><div><span className="queue-category">{capitalize(job.category)}</span><h3>{job.title || job.topic || 'Video in progress'}</h3><Status status={job.status} /><small>{timeAgo(job.created_at)}{job.scene_count ? ` · ${job.scene_count} scenes` : ''}</small></div></button>) : <div className="small-empty">{search ? 'No matching videos.' : 'All caught up. Your next video will appear here.'}</div>}</aside><section className="review-workspace">{loading ? <div className="loading-panel"><div className="spinner" /><p>Opening video…</p></div> : error ? <Notice type="error">{error}</Notice> : !details ? <Empty icon="check" title={search ? 'No matching videos' : 'Your queue is clear.'}>{search ? 'Try a different title or category.' : 'A little breathing room. New videos will arrive here when generation finishes.'}</Empty> : <><div className="workspace-section-heading"><div><span className="eyebrow">{capitalize(details.job.category)} · {details.plan?.total_duration || sumDuration(details.plan)} SECOND STORY</span><h2>{details.plan?.title || details.job.title || 'Video in progress'}</h2></div><Status status={details.job.status} /></div><div className="preview-and-meta"><VideoPreview details={details} /><div className="video-info"><div className="section-label"><Icon name="file" size={16} />THE STORY</div><h3>{details.plan?.hook || 'Content plan'}</h3><p>{details.plan?.description || 'The content plan is not available yet.'}</p><div className="hashtags">{details.plan?.hashtags?.map(tag => <span key={tag}>{tag}</span>)}</div><dl className="metadata-grid"><div><dt>FORMAT</dt><dd>Vertical · 9:16</dd></div><div><dt>RUN TIME</dt><dd>{sumDuration(details.plan) ? `${sumDuration(details.plan)} seconds` : '—'}</dd></div><div><dt>SCENES</dt><dd>{details.plan?.scenes?.length || '—'}</dd></div><div><dt>VISUAL MODE</dt><dd>{details.job.image_mode === 'text' ? 'Text cards' : details.job.image_mode === 'diffusion' ? 'Generated images' : details.job.image_mode || '—'}</dd></div></dl><div className="video-quality-note"><Icon name="eye" size={17} /><p>{details.job.image_mode === 'text' ? 'This video uses text-card visuals. Check that the visual style meets your expectations before approval.' : 'Review every scene for visual quality, accuracy, and suitability.'}</p></div>{details.manifest?.warning && <Notice type="warning">{details.manifest.warning}</Notice>}{details.job.error && <Notice type="error">Generation reported an error. Check the server logs for details.</Notice>}</div></div><Storyboard details={details} />{details.job.status === 'pending_review' ? <section className="review-decision"><div><span className="eyebrow">YOUR FINAL CUT</span><h3>Does it make the cut?</h3><p>Approval saves your decision. Publishing is a separate step.</p></div><label className="checkbox-label"><input type="checkbox" checked={checked} onChange={e => setChecked(e.target.checked)} disabled={!!busy} /><span>I’ve watched the video and checked the narration, factual claims, metadata, and media rights.</span></label>{!details.video_exists && <Notice type="warning">The rendered video is missing. Approval is unavailable.</Notice>}{actionError && <Notice type="error">{actionError}</Notice>}<div className="decision-buttons"><button className="button reject" disabled={!checked || !!busy} onClick={() => decide('rejected')}><Icon name="close" size={17} />{busy === 'rejected' ? 'Saving…' : 'Reject video'}</button><button className="button primary" disabled={!checked || !!busy || !details.video_exists} onClick={() => decide('approved')}><Icon name="check" size={18} />{busy === 'approved' ? 'Saving…' : 'Approve video'}</button></div></section> : <Notice>{details.job.status === 'approved' ? 'This video is approved. Open Publishing when you’re ready to authorize a separate upload.' : `This video is ${labels[details.job.status]?.toLowerCase() || details.job.status}. Only videos awaiting review can receive a decision.`}</Notice>}</>}</section></div></>;
+        }}>{label}<span>{filter === id || id === 'pending_review' ? id === 'all' ? jobs.length : jobs.filter(j => j.status === id).length : jobs.length}</span></button>)}</div><div className="search-field"><Icon name="search" size={17} /><input aria-label="Search videos" value={search} onChange={e => setSearch(e.target.value)} placeholder="Find a video…" /></div></div><div className="review-layout"><aside className="queue-list" aria-label="Video queue"><div className="queue-list-label">YOUR VIDEOS <span>{visible.length}</span></div>{visible.length ? visible.map((job, index) => <button key={job.job_id} className={`queue-card ${selected === job.job_id ? 'selected' : ''}`} onClick={() => setSelected(job.job_id)}><div className={`queue-poster poster-${index % 4}`}><Icon name="play" size={22} /><span>{job.duration_seconds ? `${job.duration_seconds}s` : '—'}</span></div><div><span className="queue-category">{capitalize(job.category)}</span><h3>{job.title || job.topic || 'Video in progress'}</h3><Status status={job.status} /><small>{timeAgo(job.created_at)}{job.scene_count ? ` · ${job.scene_count} scenes` : ''}</small></div></button>) : <div className="small-empty">{search ? 'No matching videos.' : 'All caught up. Your next video will appear here.'}</div>}</aside><section className="review-workspace">{loading ? <div className="loading-panel"><div className="spinner" /><p>Opening video…</p></div> : error ? <Notice type="error">{error}</Notice> : !details ? <Empty icon="check" title={search ? 'No matching videos' : 'Your queue is clear.'}>{search ? 'Try a different title or category.' : 'A little breathing room. New videos will arrive here when generation finishes.'}</Empty> : <><div className="workspace-section-heading"><div><span className="eyebrow">{capitalize(details.job.category)} · {details.plan?.total_duration || sumDuration(details.plan)} SECOND STORY</span><h2>{details.plan?.title || details.job.title || 'Video in progress'}</h2></div><Status status={details.job.status} /></div><div className="preview-and-meta"><VideoPreview details={details} /><div className="video-info"><div className="section-label"><Icon name="file" size={16} />THE STORY</div><h3>{details.plan?.hook || 'Content plan'}</h3><p>{details.plan?.description || 'The content plan is not available yet.'}</p><div className="hashtags">{details.plan?.hashtags?.map(tag => <span key={tag}>{tag}</span>)}</div><dl className="metadata-grid"><div><dt>FORMAT</dt><dd>{videoFormat(details).label}</dd></div><div><dt>RUN TIME</dt><dd>{sumDuration(details.plan) ? `${sumDuration(details.plan)} seconds` : '—'}</dd></div><div><dt>SCENES</dt><dd>{details.plan?.scenes?.length || '—'}</dd></div>{videoFormat(details).output && <div><dt>OUTPUT</dt><dd>{videoFormat(details).output}</dd></div>}<div><dt>VISUAL MODE</dt><dd>{details.job.image_mode === 'text' ? 'Text cards' : details.job.image_mode === 'diffusion' ? 'Generated images' : details.job.image_mode || '—'}</dd></div></dl><div className="video-quality-note"><Icon name="eye" size={17} /><p>{details.job.image_mode === 'text' ? 'This video uses text-card visuals. Check that the visual style meets your expectations before approval.' : 'Review every scene for visual quality, accuracy, and suitability.'}</p></div>{details.manifest?.warning && <Notice type="warning">{details.manifest.warning}</Notice>}{details.job.error && <Notice type="error">Generation reported an error. Check the server logs for details.</Notice>}</div></div><Storyboard details={details} />{details.job.status === 'pending_review' ? <section className="review-decision"><div><span className="eyebrow">YOUR FINAL CUT</span><h3>Does it make the cut?</h3><p>Approval saves your decision. Publishing is a separate step.</p></div><label className="checkbox-label"><input type="checkbox" checked={checked} onChange={e => setChecked(e.target.checked)} disabled={!!busy} /><span>I’ve watched the video and checked the narration, factual claims, metadata, and media rights.</span></label>{!details.video_exists && <Notice type="warning">The rendered video is missing. Approval is unavailable.</Notice>}{actionError && <Notice type="error">{actionError}</Notice>}<div className="decision-buttons"><button className="button reject" disabled={!checked || !!busy} onClick={() => decide('rejected')}><Icon name="close" size={17} />{busy === 'rejected' ? 'Saving…' : 'Reject video'}</button><button className="button primary" disabled={!checked || !!busy || !details.video_exists} onClick={() => decide('approved')}><Icon name="check" size={18} />{busy === 'approved' ? 'Saving…' : 'Approve video'}</button></div></section> : <Notice>{details.job.status === 'approved' ? 'This video is approved. Open Publishing when you’re ready to authorize a separate upload.' : `This video is ${labels[details.job.status]?.toLowerCase() || details.job.status}. Only videos awaiting review can receive a decision.`}</Notice>}</>}</section></div></>;
 }
 function sumDuration(plan) {
   return plan?.scenes?.reduce((sum, scene) => sum + (scene.duration_seconds || 0), 0) || 0;
 }
-function VideoPreview({
-  details
-}) {
-  return <div className="video-preview"><div className="video-frame">{details.video_exists ? <video key={details.job.job_id} controls preload="metadata" playsInline src={`${API}/jobs/${encodeURIComponent(details.job.job_id)}/video`} aria-label="Generated video preview" /> : <div className="video-unavailable"><Icon name="film" size={37} /><span>{ACTIVE.has(details.job.status) ? 'Your video is taking shape.' : 'Video unavailable'}</span></div>}<span className="video-format">9:16</span></div><div className="video-preview-caption"><span className="pulse-dot" />ORIGINAL VIDEO <span>{details.video_exists ? 'Preview before you approve' : 'No rendered file'}</span></div></div>;
+export function videoFormat(details) {
+  const config = details.job.generation_config || details.generation_config;
+  const aspect = ['9:16', '16:9', '1:1'].includes(config?.aspect_ratio) ? config.aspect_ratio : '9:16';
+  const orientation = { '9:16': 'Vertical', '16:9': 'Landscape', '1:1': 'Square' }[aspect];
+  return {
+    aspect,
+    label: `${orientation} · ${aspect}`,
+    output: config?.resolution && config?.fps ? `${config.resolution} · ${config.fps} fps` : null
+  };
+}
+function VideoPreview({ details }) {
+  const format = videoFormat(details);
+  return <div className="video-preview"><div className="video-frame" style={{ aspectRatio: format.aspect.replace(':', ' / ') }}>{details.video_exists ? <video key={details.job.job_id} controls preload="metadata" playsInline src={`${API}/jobs/${encodeURIComponent(details.job.job_id)}/video`} aria-label="Generated video preview" /> : <div className="video-unavailable"><Icon name="film" size={37} /><span>{ACTIVE.has(details.job.status) ? 'Your video is taking shape.' : 'Video unavailable'}</span></div>}<span className="video-format">{format.aspect}</span></div><div className="video-preview-caption"><span className="pulse-dot" />ORIGINAL VIDEO <span>{details.video_exists ? 'Preview before you approve' : 'No rendered file'}</span></div></div>;
 }
 function Storyboard({
   details
@@ -574,41 +582,4 @@ function Modal({
   return <div className="modal-backdrop" onMouseDown={e => {
     if (e.target === e.currentTarget) onClose();
   }}><section className="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title" tabIndex={-1} ref={dialog}><div className="modal-heading"><h2 id="modal-title">{title}</h2><button className="icon-button" onClick={onClose} aria-label="Close dialog"><Icon name="close" /></button></div>{children}</section></div>;
-}
-function GenerationModal({
-  request,
-  onClose,
-  onCreated
-}) {
-  const [category, setCategory] = useState('science');
-  const [mode, setMode] = useState('diffusion');
-  const [region, setRegion] = useState('US');
-  const [limit, setLimit] = useState(5);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
-  async function submit(event) {
-    event.preventDefault();
-    if (busy) return;
-    setBusy(true);
-    setError('');
-    try {
-      await request('/jobs', {
-        method: 'POST',
-        body: JSON.stringify({
-          category,
-          region: region.toUpperCase(),
-          limit: Number(limit),
-          image_mode: mode
-        })
-      });
-      await onCreated();
-    } catch (err) {
-      setError(`${err.message} Check the workspace before submitting another request; the job may already exist.`);
-    } finally {
-      setBusy(false);
-    }
-  }
-  return <Modal title="Give your next idea a start." onClose={() => {
-    if (!busy) onClose();
-  }}><p className="modal-intro">Find a trend and create an original short video. You’ll review it before anything can be published.</p><form onSubmit={submit}><label htmlFor="generation-category">Topic category</label><select id="generation-category" value={category} onChange={e => setCategory(e.target.value)} disabled={busy}>{['science', 'education', 'entertainment', 'gaming', 'news', 'sports', 'music', 'mixed'].map(id => <option key={id} value={id}>{capitalize(id)}</option>)}</select><div className="form-row"><div><label htmlFor="generation-region">Region code</label><input id="generation-region" value={region} onChange={e => setRegion(e.target.value.toUpperCase())} minLength={2} maxLength={2} pattern="[A-Z]{2}" required disabled={busy} /></div><div><label htmlFor="generation-limit">Trend candidates</label><input type="number" id="generation-limit" min="1" max="50" value={limit} onChange={e => setLimit(e.target.value)} required disabled={busy} /></div></div><label htmlFor="generation-mode">Visual mode</label><select id="generation-mode" value={mode} onChange={e => setMode(e.target.value)} disabled={busy}><option value="diffusion">Generated images · local diffusion</option><option value="text">Text cards · baseline quality</option></select><Notice>{mode === 'diffusion' ? 'Uses your configured local image model and GPU. Model setup must be complete.' : 'Text cards display visual prompts as slides. This is the current baseline, not real footage.'} Generation does not approve or publish.</Notice>{error && <Notice type="error">{error}</Notice>}<div className="modal-actions"><button type="button" className="button subtle" onClick={onClose} disabled={busy}>Cancel</button><button className="button primary" disabled={busy}><Icon name="spark" size={17} />{busy ? 'Starting…' : 'Start creating'}</button></div></form></Modal>;
 }

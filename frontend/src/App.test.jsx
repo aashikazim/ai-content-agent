@@ -167,7 +167,7 @@ describe('private studio', () => {
   });
   it('displays actual workspace data and an honest missing-analytics state', async () => {
     await openPage();
-    expect(screen.getByText('Generation jobs')).toBeInTheDocument();
+    expect(await screen.findByText('Generation jobs')).toBeInTheDocument();
     expect(screen.getByText('Your audience story is next')).toBeInTheDocument();
     expect(mutations()).toHaveLength(0);
   });
@@ -198,6 +198,14 @@ describe('private studio', () => {
     expect(screen.getByText('Scene visual unavailable')).toBeInTheDocument();
     expect(screen.getByText('Source provenance not recorded')).toBeInTheDocument();
     expect(screen.getByText('License information unavailable')).toBeInTheDocument();
+  });
+  it('uses saved generation settings for the reviewed video format and output metadata', async () => {
+    state = overview({ jobs: [{ ...job, generation_config: { aspect_ratio: '16:9', resolution: '720p', fps: 24 } }, approved] });
+    await openPage(/Review queue/);
+    expect(await screen.findByText('Landscape · 16:9')).toBeInTheDocument();
+    expect(screen.getByText('720p · 24 fps')).toBeInTheDocument();
+    expect(screen.getByLabelText('Generated video preview').parentElement).toHaveStyle({ aspectRatio: '16 / 9' });
+    expect(mutations()).toHaveLength(0);
   });
   it('defaults to a dry run and requires an additional explicit action for a live upload', async () => {
     const user = await openPage('Publishing');

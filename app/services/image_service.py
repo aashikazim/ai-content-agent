@@ -6,8 +6,17 @@ from PIL import Image, ImageDraw, ImageFont
 
 
 class ImageService:
-    def __init__(self, mode="diffusion"):
+    def __init__(
+        self, mode="diffusion", model_id=None,
+        width=512, height=768, visual_style="cinematic"
+    ):
+        if mode not in {"text", "diffusion"}:
+            raise ValueError("Unknown image mode")
         self.mode = mode
+        self.model_id = model_id
+        self.width = width
+        self.height = height
+        self.visual_style = visual_style
         self.pipe = None
 
     def load_model(self):
@@ -26,7 +35,7 @@ class ImageService:
                 "Use --image-mode text for a fallback."
             )
 
-        model_id = os.getenv(
+        model_id = self.model_id or os.getenv(
             "IMAGE_MODEL_ID",
             "stable-diffusion-v1-5/"
             "stable-diffusion-v1-5"
@@ -45,8 +54,6 @@ class ImageService:
     def generate(
         self, prompt, output_path, seed=42
     ):
-        import torch
-
         output_path = Path(output_path)
         output_path.parent.mkdir(
             parents=True, exist_ok=True
@@ -57,6 +64,8 @@ class ImageService:
                 prompt, output_path
             )
 
+        import torch
+
         self.load_model()
 
         generator = torch.Generator(
@@ -65,8 +74,10 @@ class ImageService:
 
         image = self.pipe(
             prompt=(
-                "Original cinematic illustration, "
-                "portrait composition, "
+                f"Original {self.visual_style.replace('_', ' ')} illustration, "
+                + ("landscape composition, " if self.width > self.height else
+                   "square composition, " if self.width == self.height else "portrait composition, ")
+                +
                 "high detail, no text, "
                 + prompt
             ),
@@ -74,8 +85,8 @@ class ImageService:
                 "watermark, logo, text, "
                 "blurry, distorted"
             ),
-            width=512,
-            height=768,
+            width=self.width,
+            height=self.height,
             num_inference_steps=int(
                 os.getenv("IMAGE_STEPS", "20")
             ),
@@ -89,7 +100,7 @@ class ImageService:
         self, prompt, output_path
     ):
         image = Image.new(
-            "RGB", (512, 768), (20, 30, 48)
+            "RGB", (self.width, self.height), (20, 30, 48)
         )
 
         draw = ImageDraw.Draw(image)
@@ -105,11 +116,11 @@ class ImageService:
 
         import textwrap
 
-        lines = textwrap.wrap(prompt, width=28)
+        lines = textwrap.wrap(prompt, width=max(15, (self.width - 70) // 16))
         text = "\n".join(lines[:12])
 
         draw.multiline_text(
-            (35, 200),
+            (35, min(200, self.height // 4)),
             text,
             fill="white",
             font=font,

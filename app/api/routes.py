@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Literal
 
 import secrets
+from uuid import UUID
 
 from fastapi import (
     APIRouter,
@@ -14,7 +15,7 @@ from fastapi import (
     Request
 )
 from fastapi.responses import FileResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.agents.trend_agent import CATEGORIES
 from app.services.job_service import JobService
@@ -23,7 +24,14 @@ from app.workflows.content_workflow import ContentWorkflow
 from app.services.publishing_service import PublishingService
 from app.services.publishing_storage import PublishingStorage
 from app.services.review_dashboard_service import ReviewDashboardService
-from app.api.admin_routes import browser_session, ensure_csrf
+from app.api.admin_routes import browser_session, ensure_csrf, require_session
+from app.models.generation_config import GenerationConfig
+from app.services.generation_storage import GenerationStorage
+from app.services.provider_catalog import (
+    get_catalog, validate_for_draft, validate_for_execution,
+)
+from app.services.script_generation_service import ScriptGenerationService
+from app.services.openai_script_service import OpenAIScriptService, PaidScriptError
 
 router = APIRouter(prefix="/api/v1")
 
@@ -33,6 +41,7 @@ DB_PATH = os.getenv(
 
 
 class JobRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     category: str = "mixed"
     region: str = Field(
         default="US",
@@ -42,6 +51,45 @@ class JobRequest(BaseModel):
     image_mode: Literal[
         "text", "diffusion"
     ] = "text"
+    generation_config: GenerationConfig | None = None
+    script_quote_id: UUID | None = None
+    script_cost_confirmed: bool = Field(default=False, strict=True)
+
+
+class ConfigurationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    configuration: GenerationConfig
+
+
+class ScriptRequest(ConfigurationRequest):
+    category: str = "mixed"
+    region: str = Field(default="US", pattern=r"^[A-Z]{2}$")
+    limit: int = Field(default=5, ge=1, le=50)
+    purpose: Literal["script", "video"] = "script"
+    parent_attempt_id: UUID | None = None
+    revision_instructions: str = Field(default="", max_length=2000)
+    quote_id: UUID | None = None
+    confirmed: bool = Field(default=False, strict=True)
+
+
+class ScriptReconciliation(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    notes: str = Field(min_length=1, max_length=500)
+    confirmed: bool = Field(default=False, strict=True)
+
+
+def script_request(body):
+    if body.category not in (*CATEGORIES.keys(), "mixed"):
+        raise ValueError("Unsupported category")
+    return ScriptGenerationService.request(
+        body.configuration, category=body.category, region=body.region,
+        limit=body.limit, purpose=body.purpose, parent_attempt_id=body.parent_attempt_id,
+        revision_instructions=body.revision_instructions,
+    )
+
+
+def execute_script(attempt_id):
+    ScriptGenerationService(DB_PATH).run(attempt_id)
 
 
 class ReviewRequest(BaseModel):
@@ -138,14 +186,117 @@ def execute_job(job_id):
             )
 
 
+@router.get("/generation/catalog", dependencies=[Depends(require_api_key)])
+def generation_catalog():
+    return get_catalog()
+
+
+@router.post("/generation/preflight", dependencies=[Depends(require_api_key)])
+def generation_preflight(body: ConfigurationRequest):
+    config = body.configuration
+    errors = []
+    try:
+        validate_for_execution(config)
+    except ValueError as exc:
+        errors.append(str(exc))
+    warnings = ["Account/model access is unverified. Cloud video generation remains disabled."]
+    if config.script_provider == "openai":
+        warnings.append("OpenAI script generation requires an administrator's current cost quote and explicit confirmation.")
+    if config.video_provider == "local":
+        warnings.append(
+            "Local output uses still images or text cards, not moving footage or animated actors."
+        )
+    return {
+        "executable": not errors,
+        "errors": errors,
+        "warnings": warnings,
+        "configuration": config.model_dump(mode="json"),
+        "estimated_cost_usd": None,
+        "paid_request": False,
+    }
+
+
+@router.post(
+    "/generation/configurations", status_code=201,
+    dependencies=[Depends(require_api_key)]
+)
+def save_generation_configuration(body: ConfigurationRequest):
+    try:
+        validate_for_draft(body.configuration)
+        return GenerationStorage(DB_PATH).save_draft(body.configuration)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+
+@router.get("/generation/configurations", dependencies=[Depends(require_api_key)])
+def generation_configurations():
+    return {"configurations": GenerationStorage(DB_PATH).list_drafts()}
+
+
+@router.get("/generation/openai-models", dependencies=[Depends(require_session)])
+def available_openai_models():
+    try:
+        return {"models": OpenAIScriptService().available_models(), "generation_submitted": False}
+    except PaidScriptError as exc:
+        raise HTTPException(409, str(exc)) from exc
+
+
+@router.post("/generation/script-quotes")
+def quote_script(body: ScriptRequest, principal=Depends(require_session)):
+    try:
+        return ScriptGenerationService(DB_PATH).quote(script_request(body), principal["username"])
+    except (ValueError, PaidScriptError) as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+
+@router.post("/generation/scripts", status_code=202)
+def create_script(body: ScriptRequest, background_tasks: BackgroundTasks,
+                  principal=Depends(require_session)):
+    if body.purpose != "script":
+        raise HTTPException(422, "Use the job endpoint for video production")
+    try:
+        identifier = ScriptGenerationService(DB_PATH).submit(
+            script_request(body), principal["username"], quote_id=body.quote_id,
+            confirmed=body.confirmed,
+        )
+    except (ValueError, PaidScriptError) as exc:
+        raise HTTPException(422, str(exc)) from exc
+    background_tasks.add_task(execute_script, identifier)
+    return {"attempt_id": identifier, "status": "queued"}
+
+
+@router.get("/generation/scripts", dependencies=[Depends(require_session)])
+def list_scripts():
+    return {"attempts": ScriptGenerationService(DB_PATH).list_attempts()}
+
+
+@router.get("/generation/scripts/{attempt_id}", dependencies=[Depends(require_session)])
+def get_script(attempt_id: UUID):
+    attempt = ScriptGenerationService(DB_PATH).get(str(attempt_id))
+    if not attempt:
+        raise HTTPException(404, "Script attempt not found")
+    return attempt
+
+
+@router.post("/generation/scripts/{attempt_id}/reconcile")
+def reconcile_script(attempt_id: UUID, body: ScriptReconciliation,
+                     principal=Depends(require_session)):
+    try:
+        return ScriptGenerationService(DB_PATH).reconcile(
+            str(attempt_id), principal["username"], body.notes, body.confirmed
+        )
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
+
+
 @router.post(
     "/jobs",
     status_code=202,
-    dependencies=[Depends(require_api_key)]
 )
 def create_job(
     request: JobRequest,
-    background_tasks: BackgroundTasks
+    background_tasks: BackgroundTasks,
+    principal=Depends(require_api_key),
 ):
     if request.category not in (
         *CATEGORIES.keys(), "mixed"
@@ -156,13 +307,25 @@ def create_job(
         )
 
     jobs = get_jobs()
-
-    job_id = jobs.create_job(
-        category=request.category,
-        region=request.region,
-        limit=request.limit,
-        image_mode=request.image_mode
-    )
+    config = request.generation_config
+    if config and config.script_provider == "openai" and principal["kind"] != "session":
+        raise HTTPException(403, "Paid script generation requires an administrator session and cost confirmation")
+    if config is not None and "image_mode" in request.model_fields_set:
+        if request.image_mode != config.image_mode:
+            raise HTTPException(422, "image_mode conflicts with generation_config.image_mode")
+    try:
+        job_id = jobs.create_job(
+            category=request.category,
+            region=request.region,
+            limit=request.limit,
+            image_mode=request.image_mode,
+            generation_config=config,
+            script_quote_id=request.script_quote_id,
+            script_cost_confirmed=request.script_cost_confirmed,
+            actor=principal.get("username"),
+        )
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
 
     background_tasks.add_task(
         execute_job, job_id

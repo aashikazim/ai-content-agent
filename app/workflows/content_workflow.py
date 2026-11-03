@@ -16,6 +16,11 @@ from app.services.job_service import JobService
 from app.services.image_service import ImageService
 from app.services.tts_service import TTSService
 from app.services.video_renderer import VideoRenderer
+from app.services.llm_service import LLMService
+from app.models.generation_config import GenerationConfig
+from app.services.provider_catalog import validate_for_execution
+from app.services.openai_script_service import PaidScriptError
+from app.services.script_generation_service import ScriptGenerationService
 
 
 class WorkflowState(TypedDict, total=False):
@@ -27,6 +32,8 @@ class WorkflowState(TypedDict, total=False):
     videos: list
     plan_id: str
     video_path: str
+    generation_config: dict
+    generation_config_source: str
 
 
 class ContentWorkflow:
@@ -49,24 +56,21 @@ class ContentWorkflow:
             else JobService(db_path)
         )
 
-        self.trend_agent = (
-            trend_agent
-            if trend_agent is not None
-            else TrendAgent(
-                storage=StorageService(db_path)
-            )
-        )
+        self.trend_agent = trend_agent
 
         self.content_agent = (
             content_agent
             if content_agent is not None
             else ContentAgent()
         )
+        self._custom_content_agent = content_agent is not None
 
         self.content_storage = (
             content_storage
             if content_storage is not None
-            else ContentStorage(db_path)
+            else ContentStorage(
+                db_path, output_dir=os.getenv("CONTENT_PLANS_DIR", "data/plans")
+            )
         )
 
         self.video_agent_factory = (
@@ -74,13 +78,25 @@ class ContentWorkflow:
             if video_agent_factory is not None
             else self.default_video_agent
         )
+        self._custom_video_factory = video_agent_factory is not None
 
         self.graph = self.build_graph()
 
-    def default_video_agent(self, image_mode):
+    def default_video_agent(self, image_mode, configuration=None):
+        config = GenerationConfig.model_validate(configuration) if configuration else None
+        width, height = config.output_dimensions if config else (
+            int(os.getenv("VIDEO_WIDTH", "1080")), int(os.getenv("VIDEO_HEIGHT", "1920"))
+        )
+        image_width, image_height = (
+            (768, 512) if width > height else (512, 512) if width == height else (512, 768)
+        )
         return VideoGenerationAgent(
             image_service=ImageService(
-                mode=image_mode
+                mode=image_mode,
+                model_id=config.image_model if config else None,
+                width=image_width,
+                height=image_height,
+                visual_style=config.visual_style if config else "cinematic",
             ),
             tts_service=TTSService(
                 voice=os.getenv(
@@ -88,15 +104,9 @@ class ContentWorkflow:
                 )
             ),
             renderer=VideoRenderer(
-                width=int(os.getenv(
-                    "VIDEO_WIDTH", "1080"
-                )),
-                height=int(os.getenv(
-                    "VIDEO_HEIGHT", "1920"
-                )),
-                fps=int(os.getenv(
-                    "VIDEO_FPS", "30"
-                ))
+                width=width,
+                height=height,
+                fps=config.fps if config else int(os.getenv("VIDEO_FPS", "30"))
             )
         )
 
@@ -107,6 +117,12 @@ class ContentWorkflow:
         )
 
         category = state["category"]
+
+        if (state.get("generation_config") or {}).get("source_mode", "trends") != "trends":
+            return {"videos": []}
+
+        if self.trend_agent is None:
+            self.trend_agent = TrendAgent(storage=StorageService(self.jobs.db_path))
 
         videos = self.trend_agent.discover(
             region=state["region"],
@@ -130,13 +146,36 @@ class ContentWorkflow:
             "planning"
         )
 
-        plan = self.content_agent.create_plan(
+        configuration = state.get("generation_config")
+        config = GenerationConfig.model_validate(configuration) if configuration else None
+        if config and config.script_provider == "openai":
+            plan = ScriptGenerationService(self.jobs.db_path).run_for_job(
+                state["job_id"], state["videos"]
+            )
+            plan_id, _ = self.content_storage.save_plan(plan)
+            self.jobs.update_job(state["job_id"], "planning", plan_id=plan_id)
+            return {"plan_id": plan_id}
+        agent = self.content_agent
+        if config and not self._custom_content_agent:
+            agent = ContentAgent(llm=LLMService(model=config.script_model))
+        options = {}
+        if config and state.get("generation_config_source") == "configured":
+            options = {
+                "target_duration_seconds": config.duration_seconds,
+                "aspect_ratio": config.aspect_ratio,
+                "visual_style": config.visual_style,
+                "max_scenes": config.max_shots,
+                "topic": config.topic if config.source_mode == "topic" else "",
+                "supplied_script": config.supplied_script if config.source_mode == "script" else "",
+            }
+        plan = agent.create_plan(
             state["videos"],
             category=state["category"],
             language=os.getenv(
                 "CONTENT_LANGUAGE",
                 "English"
-            )
+            ),
+            **options,
         )
 
         plan_id, _ = (
@@ -163,9 +202,14 @@ class ContentWorkflow:
             )
         )
 
-        agent = self.video_agent_factory(
-            state["image_mode"]
-        )
+        if self._custom_video_factory:
+            agent = self.video_agent_factory(state["image_mode"])
+        else:
+            agent = self.default_video_agent(
+                state["image_mode"],
+                state.get("generation_config")
+                if state.get("generation_config_source") == "configured" else None,
+            )
 
         output_dir = (
             Path("data/videos")
@@ -202,7 +246,8 @@ class ContentWorkflow:
             "plan",
             self.plan,
             retry_policy=RetryPolicy(
-                max_attempts=2
+                max_attempts=2,
+                retry_on=lambda exc: not isinstance(exc, PaidScriptError) and RetryPolicy().retry_on(exc),
             )
         )
 
@@ -236,10 +281,17 @@ class ContentWorkflow:
             "category": job["category"],
             "region": job["region"],
             "limit": job["video_limit"],
-            "image_mode": job["image_mode"]
+            "image_mode": job["image_mode"],
+            "generation_config": job.get("generation_config"),
+            "generation_config_source": job.get("generation_config_source", "legacy"),
         }
 
         try:
+            if job.get("generation_config"):
+                config = GenerationConfig.model_validate(job["generation_config"])
+                validate_for_execution(config)
+                if config.image_mode != job["image_mode"]:
+                    raise ValueError("Saved image mode conflicts with the job configuration")
             return self.graph.invoke(
                 initial_state
             )
