@@ -199,7 +199,7 @@ def generation_preflight(body: ConfigurationRequest):
         validate_for_execution(config)
     except ValueError as exc:
         errors.append(str(exc))
-    warnings = ["Account/model access is unverified. Cloud video generation remains disabled."]
+    warnings = ["Account/model access is unverified. Cloud video requires a completed shot plan and a separate video cost quote."]
     if config.script_provider == "openai":
         warnings.append("OpenAI script generation requires an administrator's current cost quote and explicit confirmation.")
     if config.video_provider == "local":
@@ -213,6 +213,7 @@ def generation_preflight(body: ConfigurationRequest):
         "configuration": config.model_dump(mode="json"),
         "estimated_cost_usd": None,
         "paid_request": False,
+        "submission_route": "script_then_video_quote" if config.video_provider == "google" else "local_job",
     }
 
 

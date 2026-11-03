@@ -177,3 +177,24 @@
 .generation-script-result small { font-size:12px; color:#52634f; }
 .script-history-row { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; padding:12px 0; border-bottom:1px solid #dce4d5; font-size:13px; }
 .script-workshop [role=alert], .generation-paid-authorization [role=alert] { color:#8a3827; padding:12px; background:#fff2eb; border-radius:8px; }
+.cloud-production { margin-top:28px; }
+.cloud-production > p, .cloud-production p { font-size:14px; line-height:1.8; margin:12px 0; }
+.cloud-production label { display:block; margin:16px 0 8px; }
+.cloud-production input:not([type=checkbox]), .cloud-production select, .cloud-production textarea { width:100%; }
+.cloud-production video { width:100%; max-height:520px; background:#15251c; border-radius:10px; }
+.cloud-production [role=alert] { background:#fff0e8; color:#873b27; padding:12px; overflow-wrap:anywhere; }
+.cloud-production details { margin:18px 0; padding:16px; border:1px solid #dce4d5; border-radius:10px; }
+.cloud-production summary { cursor:pointer; font-weight:600; }
+.cloud-reference-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:16px; margin:20px 0; }
+.cloud-reference-grid img { width:100%; height:180px; object-fit:contain; background:#f1f5e9; border-radius:8px; }
+.cloud-reference-grid small { display:block; }
+.cloud-production-current { margin-top:28px; border-top:1px solid #dce4d5; padding-top:24px; }
+.cloud-shots { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:18px; margin:24px 0; }
+.cloud-shot { padding:18px; border:1px solid #dce4d5; border-radius:12px; background:#fbfcf7; min-width:0; }
+.cloud-shot-selected { border-color:#86a268; }
+.cloud-shot h3 { font-size:16px; }
+.cloud-shot p, .cloud-shot small { font-size:12px; overflow-wrap:anywhere; }
+.cloud-shot-heading { display:flex; flex-wrap:wrap; justify-content:space-between; gap:10px; margin-bottom:12px; }
+.cloud-shot-heading span { font-size:12px; color:#526d40; }
+.cloud-shot .button, .cloud-production .button { white-space:normal; line-height:1.5; }
+@media(max-width:800px) { .cloud-shots { grid-template-columns:minmax(0,1fr); } }

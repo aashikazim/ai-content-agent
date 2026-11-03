@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import './GenerationForm.css';
 import ScriptWorkshop, { PaidScriptAuthorization } from './ScriptWorkshop.jsx';
+import CloudProduction from './CloudProduction.jsx';
 
 const categories = ['science', 'education', 'entertainment', 'gaming', 'news', 'sports', 'music', 'mixed'];
 const titleCase = value => value.replaceAll('_', ' ').replace(/^./, letter => letter.toUpperCase());
@@ -29,15 +30,17 @@ function ProviderInfo({ provider, model }) {
     <span className={`generation-badge ${provider.implemented ? 'available' : ''}`}>{provider.implemented ? 'Adapter implemented' : 'Integration planned'}</span>
     {!local && <strong>{provider.configured ? `Credential configured · ${provider.implemented ? 'account access unverified' : 'integration planned'}` : 'Credential not configured'}</strong>}
     <p>{provider.reason || (local ? 'Uses your configured local service. Runtime availability is checked when generation starts.' : 'This provider integration is planned.')}</p>
-    {!local && <p>Credential presence does not confirm model access. Paid scripts need a cost quote and confirmation. Cloud video remains disabled.</p>}
+    {!local && <p>Credential presence does not confirm model access. Paid scripts and Gemini video each need a separate cost quote and confirmation.</p>}
     {model?.verified_on && <small>Catalogue checked {model.verified_on}{model.source_url && <> · <a href={model.source_url} target="_blank" rel="noreferrer">Model documentation ↗</a></>}</small>}
-    {model?.clip_duration_seconds && <small>Native clips: {model.clip_duration_seconds.min}–{model.clip_duration_seconds.max} seconds. Longer productions need future multi-shot editing.</small>}
+    {model?.clip_duration_seconds && <small>Native clips: {model.clip_duration_seconds.min}–{model.clip_duration_seconds.max} seconds. Longer productions use planned shots and local assembly.</small>}
     {model?.fps && <small>Native frame rate: {model.fps.join(' / ')} fps. Aspect ratios: {model.aspect_ratios?.join(', ')}.</small>}
   </div>;
 }
 
 function plannedReasons(configuration, catalog) {
   const reasons = [];
+  if (configuration.video_provider === 'google' && catalog.phase >= 3) return ['Use the script workshop and Gemini production panel below; cloud video requires its own quote and confirmation.'];
+  if (configuration.video_provider === 'kling' && catalog.phase >= 3) return ['Kling is retired. Explicitly select Google or the local pipeline.'];
   const type = catalog.content_types.find(item => item.id === configuration.content_type);
   if (!type?.executable) reasons.push(`${type?.label || 'This content type'} is planned for a later phase.`);
   for (const kind of ['script', 'video']) {
@@ -183,7 +186,7 @@ export default function GenerationForm({ request, onCreated }) {
   const isCloud = configuration.script_provider !== 'ollama' || configuration.video_provider !== 'local';
 
   return <div className="generation-workspace">
-    <div className="generation-intro"><Symbol /><div><strong>A clear plan before the first frame.</strong><p>Choose script and visual models independently. Local video and short-form script drafts are available. OpenAI scripts require explicit cost authorization; cloud video remains planned.</p></div><span className="generation-badge available">PHASE {catalog.phase}</span></div>
+    <div className="generation-intro"><Symbol /><div><strong>A clear plan before the first frame.</strong><p>Choose script and visual models independently. Local video and short-form script drafts are available. OpenAI scripts and Gemini video require separate cost authorization. Final assembly runs locally.</p></div><span className="generation-badge available">PHASE {catalog.phase}</span></div>
     <form onSubmit={create}>
       <fieldset disabled={Boolean(busy)} className="generation-fieldset">
         <div className="generation-layout">
@@ -192,7 +195,7 @@ export default function GenerationForm({ request, onCreated }) {
               <div className="generation-types" role="radiogroup" aria-label="Content type">
                 {catalog.content_types.map(type => <label key={type.id} className={`generation-type ${configuration.content_type === type.id ? 'selected' : ''}`}>
                   <input type="radio" name="content-type" value={type.id} checked={configuration.content_type === type.id} onChange={() => change({ content_type: type.id })} />
-                  <span><strong>{type.label}</strong><small>{type.executable ? 'Available locally' : `Planned${type.phase ? ` · Phase ${type.phase}` : ''}`}</small></span><span className="generation-radio" aria-hidden="true" />
+                  <span><strong>{type.label}</strong><small>{type.executable ? 'Available locally' : type.cloud_executable ? 'Gemini video · manual quality checks' : `Planned${type.phase ? ` · Phase ${type.phase}` : ''}`}</small></span><span className="generation-radio" aria-hidden="true" />
                 </label>)}
               </div>
               <p className="generation-type-description">{contentType?.description}</p>
@@ -216,8 +219,8 @@ export default function GenerationForm({ request, onCreated }) {
                 </div>
                 <div>
                   <div className="generation-model-heading"><Symbol>▧</Symbol><h3>Visuals & video</h3></div>
-                  <Field name="video-provider" label="Video provider"><select id="create-video-provider" value={configuration.video_provider} onChange={event => changeProvider('video', event.target.value)}>{catalog.video_providers.map(item => <option key={item.id} value={item.id}>{item.label}{item.implemented ? '' : ' · planned'}</option>)}</select></Field>
-                  <Field name="video-model" label="Video model"><select id="create-video-model" value={configuration.video_model} onChange={event => change({ video_model: event.target.value })}>{videoProvider?.models.map(item => <option key={item.id} value={item.id}>{item.label || item.id}</option>)}</select></Field>
+                  <Field name="video-provider" label="Video provider"><select id="create-video-provider" value={configuration.video_provider} onChange={event => changeProvider('video', event.target.value)}>{!catalog.video_providers.some(item => item.id === configuration.video_provider) && <option value={configuration.video_provider} disabled>{configuration.video_provider} · retired selection</option>}{catalog.video_providers.map(item => <option key={item.id} value={item.id}>{item.label}{item.implemented ? '' : ' · planned'}</option>)}</select></Field>
+                  <Field name="video-model" label="Video model"><select id="create-video-model" value={configuration.video_model} onChange={event => change({ video_model: event.target.value })}>{!videoProvider && <option value={configuration.video_model} disabled>{configuration.video_model} · retired</option>}{videoProvider?.models.map(item => <option key={item.id} value={item.id}>{item.label || item.id}</option>)}</select></Field>
                   <ProviderInfo provider={videoProvider} model={videoModel} />
                 </div>
               </div>
@@ -232,12 +235,12 @@ export default function GenerationForm({ request, onCreated }) {
                 <Field name="resolution" label="Resolution"><select id="create-resolution" value={configuration.resolution} onChange={event => change({ resolution: event.target.value })}>{catalog.resolutions.map(item => <option key={item} value={item}>{item}</option>)}</select></Field>
                 <Field name="fps" label="Frame rate"><select id="create-fps" value={configuration.fps} onChange={event => change({ fps: Number(event.target.value) })}>{catalog.fps.map(item => <option key={item} value={item} disabled={videoModel?.fps && !videoModel.fps.includes(item)}>{item} fps</option>)}</select></Field>
                 <Field name="shots" label="Maximum scenes"><input id="create-shots" type="number" min="1" max="12" value={configuration.max_shots} onChange={event => change({ max_shots: Number(event.target.value) })} required /></Field>
-                <Field name="narration" label="Narration"><select id="create-narration" value={configuration.narration} onChange={event => change({ narration: event.target.value })}><option value="local_tts">Local TTS · current baseline</option><option value="model_audio">Model audio · planned</option></select></Field>
-                <Field name="captions" label="Captions"><select id="create-captions" value={configuration.captions} onChange={event => change({ captions: event.target.value })}><option value="scene_text">Scene text · current baseline</option><option value="timed">Timed captions · planned</option></select></Field>
-                <Field name="budget" label="Maximum budget (USD)" hint="OpenAI requests are checked against this limit; cloud video remains disabled."><input id="create-budget" type="number" min="0" max="1000" step="0.01" value={configuration.max_cost_usd} onChange={event => change({ max_cost_usd: event.target.value })} required /></Field>
+                <Field name="narration" label="Narration"><select id="create-narration" value={configuration.narration} onChange={event => change({ narration: event.target.value })}><option value="local_tts">Local TTS · current baseline</option><option value="model_audio">Gemini model audio</option></select></Field>
+                <Field name="captions" label="Captions"><select id="create-captions" value={configuration.captions} onChange={event => change({ captions: event.target.value })}><option value="scene_text">Scene text · current baseline</option><option value="timed">Timed phrases · Gemini assembly</option></select></Field>
+                <Field name="budget" label="Maximum budget (USD)" hint="Quotes reserve estimated script and clip costs against this limit. Provider billing remains authoritative."><input id="create-budget" type="number" min="0" max="1000" step="0.01" value={configuration.max_cost_usd} onChange={event => change({ max_cost_usd: event.target.value })} required /></Field>
               </div>
-              <label className="generation-motion"><input type="checkbox" checked={configuration.require_motion} onChange={event => change({ require_motion: event.target.checked })} /><span><strong>Require motion footage</strong><small>Planned. Illustrated local scenes cannot satisfy this requirement.</small></span></label>
-              <div className="generation-coming"><span className="generation-badge">Planned</span><p>Character-reference uploads, natural cloud audio, and timed captions will arrive with their dedicated pipeline phases.</p></div>
+              <label className="generation-motion"><input type="checkbox" checked={configuration.require_motion} onChange={event => change({ require_motion: event.target.checked })} /><span><strong>Require motion footage</strong><small>Gemini clips are checked for motion. Local still-image previews cannot satisfy this requirement.</small></span></label>
+              <div className="generation-coming"><span className="generation-badge">Planned</span><p>Gemini references, model audio, captions and shot controls are in the production panel below. Local previews retain their existing features.</p></div>
             </Section>
           </div>
 
@@ -246,10 +249,10 @@ export default function GenerationForm({ request, onCreated }) {
             <div className={`generation-frame frame-${configuration.aspect_ratio.replace(':', '-')}`} aria-hidden="true"><span>YOUR NEXT<br /><em>ORIGINAL.</em></span><div className="generation-frame-lines"><i /><i /><i /></div><small>{configuration.aspect_ratio} · {configuration.duration_seconds}s</small></div>
             <h2>{contentType?.label}</h2>
             <dl><div><dt>Script</dt><dd>{scriptModel?.label || configuration.script_model}</dd></div><div><dt>Video</dt><dd>{videoModel?.label || configuration.video_model}</dd></div><div><dt>Output</dt><dd>{configuration.resolution} · {configuration.fps} fps</dd></div><div><dt>Cloud cost</dt><dd>Script quote required for OpenAI</dd></div></dl>
-            <div className={`generation-readiness ${blockers.length ? 'planned' : ''}`}><strong><span />{blockers.length ? 'Configuration only' : 'Local configuration'}</strong><p>{blockers.length ? 'Save these settings for a future integration. Generation is currently unavailable for this combination.' : 'Check your settings, then start a local generation job. Model and service setup must be complete.'}</p></div>
+            <div className={`generation-readiness ${blockers.length ? 'planned' : ''}`}><strong><span />{blockers.length ? 'Configuration only' : 'Local configuration'}</strong><p>{configuration.video_provider === 'google' && catalog.phase >= 3 ? 'Draft a shot plan in the script workshop, then authorize Gemini clips in the production panel below.' : blockers.length ? 'Save these settings for a future integration. Generation is currently unavailable for this combination.' : 'Check your settings, then start a local generation job. Model and service setup must be complete.'}</p></div>
             {blockers.length > 0 && <ul className="generation-blockers">{blockers.map(reason => <li key={reason}>{reason}</li>)}</ul>}
-            {isCloud && <p className="generation-cost-note">An API credential never authorizes a charge. OpenAI scripts require confirmation; cloud video adapters remain planned.</p>}
-            {catalog.phase >= 2 && configuration.script_provider === 'openai' && <PaidScriptAuthorization request={request} configuration={configuration} context={{ category, region: region.toUpperCase(), limit: Number(limit) }} purpose="video" onChange={setVideoAuthorization} />}
+            {isCloud && <p className="generation-cost-note">An API credential never authorizes a charge. Scripts and Gemini video need separate quotes and confirmation.</p>}
+            {catalog.phase >= 2 && configuration.script_provider === 'openai' && configuration.video_provider === 'local' && <PaidScriptAuthorization request={request} configuration={configuration} context={{ category, region: region.toUpperCase(), limit: Number(limit) }} purpose="video" onChange={setVideoAuthorization} />}
             <div className="generation-actions"><button className="button subtle" type="button" onClick={check} disabled={Boolean(busy)}>{busy === 'check' ? 'Checking…' : 'Check configuration'}</button><button className="button primary" type="submit" disabled={Boolean(busy) || blockers.length > 0 || jobAttempted || (configuration.script_provider === 'openai' && !videoAuthorization)}>{busy === 'create' ? 'Starting…' : jobAttempted ? 'Request submitted' : 'Start local generation'}<span aria-hidden="true">↗</span></button><button className="button generation-save" type="button" onClick={saveDraft} disabled={Boolean(busy)}>{busy === 'save' ? 'Saving…' : 'Save settings'}</button></div>
             <p className="generation-human-note"><span aria-hidden="true">◇</span> Generation creates a draft video. Approval and publishing each require your separate action.</p>
           </aside>
@@ -264,5 +267,6 @@ export default function GenerationForm({ request, onCreated }) {
       </div>
     </form>
     {catalog.phase >= 2 && <ScriptWorkshop request={request} configuration={configuration} category={category} region={region} limit={limit} />}
+    {catalog.phase >= 3 && <CloudProduction request={request} />}
   </div>;
 }

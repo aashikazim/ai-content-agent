@@ -91,7 +91,7 @@ def test_unsupported_persisted_cloud_config_fails_before_discovery(tmp_path):
     trend = Mock()
     workflow = ContentWorkflow(job_service=jobs, trend_agent=trend, content_agent=Mock(),
                                content_storage=ContentStorage(jobs.db_path, tmp_path / "plans"))
-    with pytest.raises(ValueError, match="Phase 5"):
+    with pytest.raises(ValueError, match="retired"):
         workflow.run(job_id)
     trend.discover.assert_not_called()
     assert jobs.get_job(job_id)["status"] == "failed"

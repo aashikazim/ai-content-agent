@@ -40,44 +40,90 @@ Existing scheduler requests still use `CONTENT_API_KEY`. Manual API review now r
 
 YouTube resumable uploads continue through acknowledged chunks, but failed chunk requests are not automatically retried, including HTTP 5xx responses. The existing reservation remains for reconciliation; a new upload attempt requires human intervention.
 
-> **Current status (November 2026):** Days 1–7 have been implemented in stages. Core services and automated tests are in place, but the complete scheduled-generation-to-publication workflow still requires end-to-end verification. Visual quality is a known limitation: the existing `text` mode creates text-based scenes, while `diffusion` mode depends on local image-model setup. Real stock footage, neural narration, and scene regeneration are planned improvements. Facebook Page authorization is not yet confirmed working.
+> **Current status (November 2026):** Days 1–7 have been implemented in stages. Core services and automated tests are in place, but the complete scheduled-generation-to-publication workflow still requires end-to-end verification. Visual quality is a known limitation: the existing `text` mode creates text-based scenes, while `diffusion` mode depends on local image-model setup. Cloud moving footage, model audio and versioned shot regeneration are now implemented as described above; local stock acquisition and neural local narration remain future work. Facebook Page authorization is not yet confirmed working.
 
-## Provider selection and OpenAI scripts — Phases 1–2
+## OpenAI planning, Gemini video and local assembly — Phases 1–4 and 6
 
-**Create video** is available in React and `pages/3_Create_Video.py` in Streamlit. Both use the same local single-admin API session, including CSRF protection. Streamlit's Create Video page signs into the API; existing analytics/review/publishing pages retain their existing behavior. Script and video providers are independent. All five content types are visible, with planned video capabilities labeled. Settings can be saved without running generation.
+The local React studio and Streamlit **Create Video** page now share the provider, script, character-reference and video-production APIs. Kling and Phase 5 are retired at the user's request; old stored selections remain readable and cannot execute. Local models remain an explicit option. A cloud failure never silently selects local models or text cards.
 
-| Capability | Current behavior |
+| Stage | Implementation |
 | --- | --- |
-| Local video | Realistic-short illustrated previews, 30–60 seconds; text cards or experimental diffusion, local narration, FFmpeg |
-| Output settings | New configured jobs honor 9:16, 16:9 or 1:1, 720p/1080p, 24/30 fps, duration, scene limit and style |
-| Script workshop | Local Ollama or OpenAI; outlines, narration, visual prompts, screenplay, 2–3 fictional character profiles and dialogue; immutable revision history |
-| Sources | YouTube trend signals, your topic, or a script to adapt; topic/script mode needs no YouTube key |
-| OpenAI + local video | Explicitly authorized OpenAI script followed by the existing local illustrated-video pipeline |
-| Drama/comedy/news | Short-form script drafts only; news is always unverified, comedy is fiction/satire, drama is fiction |
-| Long drama / cloud video | Settings can be saved; generation remains disabled pending later phases |
+| Script / characters / scene and camera planning | OpenAI `gpt-6.1-sol` with strict structured output; local Ollama remains selectable |
+| Realistic / animated moving footage | Google `gemini-omni-1.1-flash`, one tracked request per planned shot |
+| Shot edits / extensions | Gemini conversational edits and extensions using the prior interaction ID; candidates preserve the original |
+| Final assembly | Local FFmpeg on DGX Spark: trim, normalize, captions, audio, MP4 validation |
+| Local fallback | Existing Ollama, text/diffusion scenes, local narration and renderer; select it explicitly |
 
-Existing jobs and legacy scheduler requests preserve their prior rendering defaults. Additive SQLite tables store immutable per-job settings, reusable configuration drafts, single-use cost quotes and script attempts; existing jobs, plans and publication history are preserved. Initialization migrates these tables idempotently. Back up your database before first use of an updated version.
+Current cloud productions are **30–60 seconds**, up to **12 shots**, with individual initial shots of **3–10 seconds**, at **24 fps** and **9:16 or 16:9**. Native generation is 720p; selecting 1080p upscales locally. Long drama remains visible but unimplemented. News remains an **unverified draft** with AI illustrative scenes; there is no automated fact checker or licensed stock-footage integration. Local previews keep their previous aspect-ratio/resolution/frame-rate behavior, including legacy requests and existing jobs.
 
-To enable optional OpenAI scripts, set `OPENAI_API_KEY` locally in `.env` and restart FastAPI. Never paste it into the dashboard. The default catalogue model is `gpt-6.1-sol`, with `gpt-6-sol` as an explicitly selectable alternative. The adapter uses the [Responses API](https://developers.openai.com/api/reference/resources/responses/methods/create) and [strict structured output](https://developers.openai.com/api/docs/guides/structured-outputs). Local Ollama remains usable without cloud credentials. No new Python dependencies or GPU packages are required for OpenAI.
+### Start a cloud production
 
-In either dashboard, choose the source and script provider, then use **Script workshop** to draft or revise a script. For OpenAI, first check model access and estimate cost, then check the authorization box, then click **Generate script draft**. Selecting an existing completed draft and entering revision instructions creates a new attempt; it does not replace the original. A script draft does not create, approve or publish a video. Starting a video with OpenAI uses a separate authorization for a fresh script request, rather than automatically reusing a workshop draft.
+Set these credentials privately in `.env`, then restart FastAPI. Never enter them into the dashboard:
 
-Model access is checked only on an explicit action; a configured key does not prove availability. Unavailable models produce an error and never switch providers or models automatically. Official [GPT-6.1 Sol](https://developers.openai.com/api/docs/models/gpt-6.1-sol) and [GPT-6 Sol](https://developers.openai.com/api/docs/models/gpt-6-sol) documentation was checked on November 3, 2026. Verify account access in your own project before use.
+```dotenv
+OPENAI_API_KEY=
+GEMINI_API_KEY=
+```
 
-Each paid script requires an administrator session, a ten-minute single-use quote bound to the exact settings/source/revision/purpose, and explicit confirmation. Current standard pricing used by the estimator is $2 per million input tokens and $10 per million output tokens, including reasoning. A conservative 65,000-input-token allowance and 8,000-output-token cap give a **$0.21 estimated token bound per script request**; the full request is limited to 60,000 UTF-8 bytes. A lower configured budget blocks submission. Provider billing remains authoritative; historical calculated token cost is stored separately from actual billed cost, which remains unknown unless reported. No video-generation cost is included or authorized.
+Rebuild the React app after source updates using `cd frontend && npm run build`. No new Python dependencies, CUDA packages, model weights or GPU downloads are needed. Use the existing single admin login; browser generation/review/publishing does not ask for API keys.
 
-Only one paid script attempt may be queued/running at a time. Paid POSTs have no automatic retries, redirects or model fallback. Timeouts and ambiguous outcomes become `needs_reconciliation`; an identical unresolved request is blocked. Interrupted attempts older than five minutes are surfaced when history is read. Inspect history/provider usage, then explicitly close an uncertain attempt with reconciliation notes before authorizing a new request. Closing an attempt neither refunds nor resubmits it. Background execution is in-process, not a durable worker queue. React polls attempt status; Streamlit uses **Refresh script history**.
+1. In **Create video**, choose the content type/style/duration, **OpenAI** script provider and **Google Gemini** video provider. Choose 24 fps. Drama/animated character dialogue requires **Gemini model audio**; local TTS is a single narrator. Timed captions use phrase timings described below.
+2. In **Script workshop**, explicitly check model access/estimate the script cost, authorize one request, then generate. The validated draft includes original narration, fictional character IDs/descriptions, dialogue, and camera/action shots whose durations cover each scene. A revision creates a separate draft and preserves the original.
+3. In **Gemini video production**, refresh history and select the completed script. Upload original/permitted reference images to the local registry, using the exact character IDs from the script. Select one reference for every character in drama/animation; up to three are supported. Realistic non-character footage may omit references.
+4. Estimate video cost, inspect the script/reference selection and quote, then explicitly confirm. The existing draft is reused; video creation does not bill a second script request. Each shot is submitted once, its interaction ID is recorded, and completed clips are downloaded and validated. React retrieves progress automatically; Streamlit uses **Refresh production history**.
+5. Inspect selected clips and the final MP4. Confirm appearance/clothing/actions/voices, caption/audio timing, factual labeling and media rights, then **Send video to manual review**. Only technically valid, complete footage can reach this step. This does not approve the video.
+6. In **Review Queue**, approve/reject explicitly. An approved video still requires a separate manual action in **Publishing**; dry run/private defaults and duplicate-upload reconciliation are preserved.
 
-API additions under `/api/v1`:
+The completed script's generation settings are immutable. To change its content type/duration/audio/output configuration, create a revised script with the desired settings; uploading/selecting references afterward is supported. Local video requests still use the existing `/jobs` path. Cloud jobs reuse the LangGraph execution path with discovery and paid planning skipped because their completed draft and shot authorizations are already persisted.
 
-- `GET /generation/catalog`, `POST /generation/preflight` and `GET/POST /generation/configurations`: provider metadata, validation and saved settings.
-- `GET /generation/openai-models`: account-access check without generation; admin session required.
-- `POST /generation/script-quotes`: estimate and account check; admin session + CSRF required.
-- `POST /generation/scripts`, `GET /generation/scripts`, `GET /generation/scripts/{attempt_id}`: explicit draft generation and history; admin session required, mutations need CSRF.
-- `POST /generation/scripts/{attempt_id}/reconcile`: human inspection notes and confirmation; admin session + CSRF required.
-- `POST /jobs` accepts optional `generation_config`; OpenAI additionally requires `script_quote_id`, `script_cost_confirmed: true`, and an admin session. A scheduler generation key cannot authorize paid scripts.
+### References, regeneration, edits and extensions
 
-`GEMINI_API_KEY` and `KLING_API_KEY` are reserved empty configuration fields. Their video adapters are still disabled. Phase 2 improves scripting; it does not add moving footage, character-reference uploads, neural voices or timed captions. Structured validation does not establish factual accuracy. Human factual/rights review, video approval and separate manual publishing remain mandatory.
+The registry stores character identity, appearance, clothing, voice notes, source/rights notes and image hashes. Images require a permission confirmation, at least 128px, at most 16 megapixels and 4MB. They are normalized to an owner-readable PNG of at most 2MB with metadata stripped. Files are under gitignored `data/character_references/` by default. Reference images stay local until selected for an explicitly authorized Google request. Reference IDs must match the draft's character IDs; identity and voice consistency are **not guaranteed** by that check or by the model.
+
+Each shot has immutable version history and separate cost authorization. **Regenerate**, **Edit**, and **Extend** create candidates; they do not overwrite selected clips. Preview a candidate, choose a trim start, then **Use this shot & assemble**. Choosing a version invalidates previous quality checks. Approved/rejected jobs and jobs with publication attempts are locked against production changes.
+
+Extensions add 3–10 seconds to a generated candidate, up to 40 seconds. They use the previous generated interaction, not arbitrary uploaded video. Google does not clearly specify whether every extension returns a full candidate or only a continuation; the application requires the measured full requested candidate duration and rejects incompatible output instead of blindly concatenating it. The original remains available. A trim window selects footage for the original planned shot duration; extension does not automatically lengthen the screenplay. Voice editing and uploaded audio references are unsupported.
+
+### Costs, storage and recovery
+
+Quotes last ten minutes, bind the administrator and exact request/references, require strict boolean confirmation and can be consumed only once. Saving settings or a `paid_generation_confirmed` field never authorizes a charge. Scheduler generation keys cannot authorize cloud work.
+
+The OpenAI estimator retains the conservative $0.21 script token bound with 60,000 UTF-8 request bytes and 8,000 output tokens. Google pricing checked November 3, 2026 is $1.50/M input, $9/M text output and $17.50/M video output tokens. The documented 720p conversion of 5,792 video tokens/second gives about **$3.04 for 30s / $6.08 for 60s** of video output before input/thinking costs. The application estimates each initial request using the maximum 10-second clip allowance plus input/thinking allowances; extensions reserve the full candidate duration. Estimates include prior reserved shot estimates and the script authorization when available, and reject projected estimated spend beyond the configured budget. These are **estimates, not guaranteed invoice caps**. Provider billing remains authoritative. [Google pricing](https://aistudio.google.com/docs/pricing#gemini-omni-1.1-flash)
+
+Usage records keep numeric token counts and external interaction IDs. A calculated standard-price estimate is shown only when complete, consistent modality and separate thinking counts are present; actual invoiced cost stays unknown. Cached billing adjustments and other provider/account adjustments are not asserted. [Google token usage](https://aistudio.google.com/docs/tokens)
+
+Paid POSTs have no automatic retries, redirects, model substitution or local fallback. A timeout/ambiguous result becomes `needs_reconciliation`. A known interaction can be retrieved/downloaded without a new generation request. Inspect provider usage and record reconciliation notes; if an interaction ID was found, attach it explicitly for retrieval. An inspected attempt may be closed locally without cancelling/refunding the provider request. A new paid candidate needs a new quote and preserves the old consumed authorization. After an interrupted batch, **Continue unsubmitted authorized shots** requires confirmation and submits only previously reserved shots that never crossed the submission boundary. It does not repeat an uncertain POST. **Discard never-submitted shots** releases only queued reservations without a provider call; submitted and uncertain interactions remain in history for inspection.
+
+SQLite initialization adds production, quote, shot-version, event, processing-lease and reference tables idempotently. Existing jobs/plans/auth/publication history is preserved. Back up the database before upgrading. Background tasks are in-process with per-production leases; browser/server restarts may require explicit status refresh or reconciliation. There is no durable worker queue. Assets default to gitignored `data/videos/cloud/`; optional `CLOUD_VIDEOS_DIR` and `CHARACTER_REFERENCES_DIR` choose local paths. Never commit those files or databases.
+
+Google background Interactions use `store:true`, with paid interactions retained for up to 55 days by default. Account access, quotas, background availability and retention requirements must be checked in your project. The model guide documents native video; the background guide documents the general async contract, without an Omni-specific example. **No real paid account call was used in implementation verification.** [Video guide](https://aistudio.google.com/docs/omni), [background execution](https://aistudio.google.com/docs/background-execution).
+
+### Media quality and current limits
+
+Every raw selected clip must decode, match planned duration, contain measurable motion and include audio when requested. Missing/invalid assets block review. FFmpeg normalizes geometry/frame rate, handles explicit trim windows, adds model audio or local narration, renders readable captions, normalizes loudness and validates the complete H.264/AAC MP4. Captions use **estimated phrase timing**, not speech recognition/forced alignment; human synchronization checks remain mandatory. Technical motion checks do not establish acting quality, correct speech, factual accuracy or identity continuity.
+
+Neural local TTS, automatic word-aligned captions, automated semantic continuity checks, durable workers, verified news research, licensed stock acquisition, arbitrary uploaded-video editing and 5–20-minute productions remain future work. The existing local TTS/image pipeline is preserved without claiming a quality upgrade to its models.
+
+### API additions
+
+All cloud endpoints require the existing admin session; mutations require CSRF. No cloud endpoint approves or publishes content.
+
+| Endpoint under `/api/v1/generation` | Purpose |
+| --- | --- |
+| `catalog`, `preflight`, `configurations` | Provider metadata, validation, saved settings |
+| `openai-models`, `script-quotes`, `scripts` | Explicit script access/cost checks, draft generation/history |
+| `references`, `references/{id}/image` | Local rights-confirmed reference upload/list and authenticated images |
+| `POST video-quotes` | Estimate a completed draft's shots and selected references |
+| `POST videos`, `GET videos`, `GET videos/{id}` | Explicit creation and production history/status |
+| `POST videos/{id}/refresh` | Background retrieval/download/local assembly; never a paid submission |
+| `POST videos/{id}/shot-quotes`, `POST videos/{id}/shots` | Quote/confirm one regenerated, edited or extended candidate |
+| `POST videos/{id}/select` | Explicit candidate/trim selection and local reassembly |
+| `POST videos/{id}/shots/{attempt}/reconcile` | Human inspection notes, optional remote ID or local close |
+| `POST videos/{id}/continue` | Confirm previously authorized, never-submitted queued shots |
+| `POST videos/{id}/discard-queued` | Discard never-submitted reservations without a provider call |
+| `POST videos/{id}/review` | Human quality-check handoff to `pending_review`; no approval/publication |
+
+The OpenAI adapter uses [Responses](https://developers.openai.com/api/reference/resources/responses/methods/create) and [strict structured output](https://developers.openai.com/api/docs/guides/structured-outputs) with `gpt-6.1-sol`; `gpt-6-sol` remains an explicit alternative. It never silently changes models. Google uses the documented REST `steps[].content[]` video response, authenticated downloads, and `previous_interaction_id` for edits/extensions. Undefined duration-string syntax is not invented: duration is requested in the prompt and measured locally, so a model duration mismatch fails visibly rather than passing a bad clip.
 
 ## Features
 
@@ -475,9 +521,9 @@ Tests use mocks for platform services and cannot prove that live OAuth, Meta per
 
 ## Known issues and planned improvements
 
-1. **Visual quality:** Current text-card output does not meet the target quality for YouTube Shorts or Facebook Reels. Add a visual-asset pipeline with licensed stock footage, better image models, and explicit scene-level asset checks.
-2. **Narration:** Replace baseline `espeak-ng` with a more natural local neural TTS model; add synchronized word-level subtitles.
-3. **Editing:** Add motion to still images, transitions, caption timing, audio mixing, and scene-quality checks before review.
+1. **Visual quality:** Local text cards remain a baseline. Gemini moving-clip generation and explicit asset checks are implemented; live model quality still needs manual verification. Licensed stock acquisition and improved local image models remain future work.
+2. **Narration:** Gemini model audio is selectable for cloud footage; local `espeak-ng` remains the baseline. Natural local neural TTS and forced word-aligned subtitles remain future work.
+3. **Editing:** Cloud clip normalization, trims, Gemini edit/extension candidates, phrase captions, loudness normalization and technical checks are implemented. Exact speech alignment and semantic quality assessment still require human review.
 4. **Content research:** Improve factual grounding, originality, scene relevance, and topic selection. Review source licenses before reuse.
 5. **Review workflow:** Add controlled **Regenerate Script**, **Regenerate Images**, **Regenerate Narration**, and **Re-render Video** actions. Retain manual approval and publishing.
 6. **Facebook permissions:** Resolve the Page ID / Page access token / Graph API permissions before relying on Facebook publishing or analytics.
@@ -511,3 +557,6 @@ git push origin main
 The next development stage focuses on **content quality**, not additional publishing automation: better scene assets, natural narration, source-aware scripting, and regeneration controls inside the manual review dashboard. The intended workflow remains **automated creation → manual review → manual publishing → analytics**.
 
 Phase 2 verification: **303 Python tests passed**, including fresh/existing SQLite migrations, strict script validation, cost authorization, uncertain requests, local supplied-source planning, API authorization and Streamlit interactions. **22 frontend tests passed** and the production build passed. Chrome fixture checks verified a mocked OpenAI script submission, desktop/mobile layouts, decoded video playback, manual approval without publication, publishing dry run and live-confirmation cancellation. Paid providers and uploads were mocked; a Phase 1 test rendered and decoded actual temporary FFmpeg/espeak output. These checks do not establish live model availability or improved image/TTS quality.
+
+
+Phases 3/4/6 verification on Linux ARM64 (`aarch64`), Python 3.12.3: **337 Python tests passed**, **27 frontend tests passed**, production build passed, and `git diff --check` passed. Checks cover fresh/existing SQLite migration, structured shots and references, cost confirmation/quote consumption, concurrent duplicate-POST prevention, ambiguous outcomes, safe retrieval and local closure, queued-shot discard/continuation, version preservation and trim selection, usage/thinking cost estimates, manual quality/review/publishing boundaries, actual 30-second FFmpeg caption/audio assembly and complete decoding. Chrome fixture QA also exercised a five-shot mocked-provider production through real local FFmpeg assembly, desktop/mobile playback, quality-check handoff, manual approval without publication, publishing dry run and cancellation. No paid calls, uploads, model downloads, public deployments or commits were performed. Live Gemini account access, background behavior, duration adherence, extension semantics and output quality remain unverified; all provider success responses in tests were mocked.

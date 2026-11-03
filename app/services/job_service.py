@@ -66,6 +66,8 @@ class JobService:
             if legacy_request else GenerationConfig.model_validate(generation_config)
         )
         validate_for_execution(config)
+        if config.video_provider == "google":
+            raise ValueError("Cloud video starts from a completed script and a video cost quote; use the video production endpoint")
         script_service = None
         script_request = None
         if config.script_provider == "openai":

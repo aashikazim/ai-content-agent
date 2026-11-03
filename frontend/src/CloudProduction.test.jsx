@@ -1,0 +1,91 @@
+import React from 'react';
+import { afterEach, expect, it, vi } from 'vitest';
+import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import CloudProduction from './CloudProduction.jsx';
+afterEach(()=>{cleanup();vi.restoreAllMocks();});
+const identifier='ba7fb41f-eafa-493d-9b28-31358dc98848';
+const scriptId='ba7fb41f-eafa-493d-9b28-31358dc98849';
+const plan={content_plan:{title:'A moving original story'},factual_status:'fiction',characters:[],shots:[{shot_number:1,action:'A bird takes flight'}]};
+const production={production_id:identifier,job_id:identifier,status:'technical_ready',production_plan:plan,shots:[{attempt_id:identifier,shot_number:1,version:1,selected:true,status:'completed',operation:'generate',estimate_usd:'1.13',video_url:'/api/v1/fixture.mp4'}],events:[]};
+function api({lost=false,existing=false}={}) {
+  return vi.fn(async (path,options) => {
+    if (path==='/generation/scripts') return {attempts:[{attempt_id:scriptId,status:'completed',production_plan:plan}]};
+    if (path==='/generation/references') return {references:[]};
+    if (path==='/generation/videos' && !options?.method) return {productions:existing ? [production]:[]};
+    if (path==='/generation/video-quotes') return {quote_id:identifier,estimate_usd:'4.52',projected_estimate_usd:'4.73',shot_count:4,notice:'Estimate only; no automatic retries.'};
+    if (path==='/generation/videos') {if(lost) throw new Error('Connection interrupted'); return {production_id:identifier,job_id:identifier,status:'queued'};}
+    if (path===`/generation/videos/${identifier}`) return {...production,status:'processing',shots:[]};
+    if (path===`/generation/videos/${identifier}/review`) return {...production,status:'pending_review'};
+    throw new Error(`Unexpected ${path}`);
+  });
+}
+const paid = request=>request.mock.calls.filter(([path,options])=>path==='/generation/videos' && options?.method==='POST');
+it('requires separate quote and explicit confirmation for video and never publishes',async()=>{
+  const user=userEvent.setup();const request=api();render(<CloudProduction request={request}/>);
+  await screen.findByRole('option',{name:/A moving original story/});
+  expect(paid(request)).toHaveLength(0);
+  await user.selectOptions(screen.getByLabelText('Completed script with a shot plan'),scriptId);
+  await user.click(screen.getByRole('button',{name:'Estimate Gemini video cost'}));
+  const submit=await screen.findByRole('button',{name:'Confirm paid video generation'});
+  expect(submit).toBeDisabled();expect(paid(request)).toHaveLength(0);
+  await user.click(screen.getByRole('checkbox',{name:/I authorize these Gemini requests/}));
+  await user.click(submit);
+  await waitFor(()=>expect(paid(request)).toHaveLength(1));
+  expect(JSON.parse(paid(request)[0][1].body)).toEqual({quote_id:identifier,confirmed:true});
+  expect(request.mock.calls.some(([path])=>/publish|\/review$/.test(path))).toBe(false);
+});
+it('invalidates a video quote when the selected script changes',async()=>{
+  const user=userEvent.setup();const request=api();render(<CloudProduction request={request}/>);
+  await screen.findByRole('option',{name:/A moving original story/});
+  await user.selectOptions(screen.getByLabelText('Completed script with a shot plan'),scriptId);
+  await user.click(screen.getByRole('button',{name:'Estimate Gemini video cost'}));
+  await screen.findByRole('button',{name:'Confirm paid video generation'});
+  await user.selectOptions(screen.getByLabelText('Completed script with a shot plan'),'');
+  expect(screen.queryByRole('button',{name:'Confirm paid video generation'})).not.toBeInTheDocument();
+  expect(paid(request)).toHaveLength(0);
+});
+it('blocks another paid request after a lost acknowledgement',async()=>{
+  const user=userEvent.setup();const request=api({lost:true});render(<CloudProduction request={request}/>);
+  await screen.findByRole('option',{name:/A moving original story/});
+  await user.selectOptions(screen.getByLabelText('Completed script with a shot plan'),scriptId);
+  await user.click(screen.getByRole('button',{name:'Estimate Gemini video cost'}));
+  await user.click(await screen.findByRole('checkbox',{name:/I authorize these Gemini requests/}));
+  await user.click(screen.getByRole('button',{name:'Confirm paid video generation'}));
+  await screen.findByText(/Submission outcome is unknown/);
+  expect(screen.getByRole('button',{name:'Confirm paid video generation'})).toBeDisabled();
+  await user.click(screen.getByRole('button',{name:'Refresh production history'}));
+  expect(paid(request)).toHaveLength(1);
+  expect(screen.getByRole('button',{name:'Allow a separately quoted request'})).toBeDisabled();
+});
+it('requires all human quality checks and sends to review without approving',async()=>{
+  const user=userEvent.setup();const request=api({existing:true});render(<CloudProduction request={request}/>);
+  await screen.findByLabelText('Existing production');
+  await user.selectOptions(screen.getByLabelText('Existing production'),identifier);
+  const submit=screen.getByRole('button',{name:'Send video to manual review'});
+  expect(submit).toBeDisabled();
+  for(const pattern of [/I checked character appearance/,/I checked spoken words/,/I checked factual claims/]) await user.click(screen.getByRole('checkbox',{name:pattern}));
+  await user.click(submit);
+  await screen.findByText('pending review');
+  const mutations=request.mock.calls.filter(([,options])=>options?.method==='POST');
+  expect(mutations.map(([path])=>path)).toEqual([`/generation/videos/${identifier}/review`]);
+  expect(paid(request)).toHaveLength(0);
+});
+
+it('keeps retrieving status while all clips are complete but local assembly is running',async()=>{
+  const originalInterval=globalThis.setInterval;
+  vi.spyOn(globalThis,'setInterval').mockImplementation(callback=>originalInterval(callback,10));
+  const user=userEvent.setup(); const request=api({existing:true}); const original=request.getMockImplementation();
+  request.mockImplementation(async(path,options)=>{
+    if(path==='/generation/videos' && !options?.method) return {productions:[{...production,status:'assembling'}]};
+    if(path===`/generation/videos/${identifier}/refresh`) return {status:'retrieval_requested'};
+    if(path===`/generation/videos/${identifier}`) return production;
+    return original(path,options);
+  });
+  render(<CloudProduction request={request}/>);
+  await screen.findByLabelText('Existing production');
+  await user.selectOptions(screen.getByLabelText('Existing production'),identifier);
+  await screen.findByRole('button',{name:'Send video to manual review'});
+  expect(paid(request)).toHaveLength(0);
+  expect(request.mock.calls.some(([path])=>path.endsWith('/refresh'))).toBe(true);
+});

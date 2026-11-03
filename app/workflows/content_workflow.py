@@ -116,6 +116,9 @@ class ContentWorkflow:
             "discovering"
         )
 
+        if (state.get("generation_config") or {}).get("video_provider") == "google":
+            return {"videos": []}
+
         category = state["category"]
 
         if (state.get("generation_config") or {}).get("source_mode", "trends") != "trends":
@@ -145,6 +148,9 @@ class ContentWorkflow:
             state["job_id"],
             "planning"
         )
+
+        if (state.get("generation_config") or {}).get("video_provider") == "google":
+            return {"plan_id": self.jobs.get_job(state["job_id"])["plan_id"]}
 
         configuration = state.get("generation_config")
         config = GenerationConfig.model_validate(configuration) if configuration else None
@@ -195,6 +201,15 @@ class ContentWorkflow:
             state["job_id"],
             "rendering"
         )
+
+        if (state.get("generation_config") or {}).get("video_provider") == "google":
+            from app.services.cloud_video_service import CloudVideoService
+            service = CloudVideoService(self.jobs.db_path)
+            production_id = service.production_id_for_job(state["job_id"])
+            if not production_id:
+                raise ValueError("Missing cloud production authorization")
+            service.process(production_id, submit_queued=True)
+            return {"video_path": self.jobs.get_job(state["job_id"]).get("video_path")}
 
         plan_data = (
             self.content_storage.get_plan(

@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 from app.agents.trend_agent import CATEGORIES
 from app.services.streamlit_admin_service import ContentAPIError, StreamlitAdminClient
 from app.services.streamlit_script_workshop import paid_authorization, script_workshop
+from app.services.streamlit_cloud_production import cloud_production
 
 
 load_dotenv(".env")
@@ -107,8 +108,8 @@ if st.session_state.get("_create_video_last_job"):
 
 st.info(
     "Local illustrated previews support trends, topics and supplied scripts. OpenAI script generation requires "
-    "a configured key, account model check and explicit cost confirmation. Cloud video, character animation, "
-    "verified news, references and timed captions remain planned. Saving settings never starts generation."
+    "a configured key, account model check and explicit cost confirmation. Gemini production below uses moving "
+    "clips and character references. Verified news research and long drama remain planned. Saving settings never starts generation."
 )
 
 with st.expander("Saved settings", expanded=bool(drafts)):
@@ -156,6 +157,9 @@ script_column, video_column = st.columns(2)
 
 def model_controls(kind, column):
     providers = {provider["id"]: provider for provider in catalog[f"{kind}_providers"]}
+    selected_provider = st.session_state.get(f"cv_{kind}_provider")
+    if selected_provider and selected_provider not in providers:
+        providers[selected_provider] = {"label":selected_provider + " · retired", "models": [{"id": st.session_state.get(f"cv_{kind}_model_{selected_provider}", "unavailable")}], "reason":"Retired provider; explicitly select Google or local", "implemented":False}
     with column:
         provider_id = st.selectbox(
             f"{kind.title()} provider", list(providers), key=f"cv_{kind}_provider",
@@ -213,18 +217,17 @@ fps = delivery[3].selectbox("Frames per second", catalog["fps"], key="cv_fps")
 sound = st.columns(2)
 narration = sound[0].selectbox(
     "Narration", ["local_tts", "model_audio"], key="cv_narration",
-    format_func=lambda value: {"local_tts": "Local TTS · current baseline", "model_audio": "Model audio · planned"}[value],
+    format_func=lambda value: {"local_tts": "Local TTS · current baseline", "model_audio": "Gemini model audio"}[value],
 )
 captions = sound[1].selectbox(
     "Captions", ["scene_text", "timed"], key="cv_captions",
-    format_func=lambda value: {"scene_text": "Scene text · current baseline", "timed": "Timed captions · planned"}[value],
+    format_func=lambda value: {"scene_text": "Scene text · current baseline", "timed": "Timed phrases · Gemini assembly"}[value],
 )
 with st.expander("Limits and character references"):
     max_shots = st.number_input("Maximum shots", min_value=1, max_value=12, key="cv_max_shots")
     max_cost = st.number_input("Maximum cost (USD)", min_value=0.0, max_value=1000.0, step=1.0, key="cv_max_cost_usd")
     require_motion = st.checkbox("Require motion footage", key="cv_require_motion")
-    st.file_uploader("Character reference images · Phase 4", type=["png", "jpg", "jpeg", "webp"], disabled=True)
-    st.caption("Reference uploads and character consistency will be added in Phase 4. No files are uploaded here.")
+    st.caption("Upload character references and select them in the Gemini production panel below. Character IDs must match the completed script.")
     if st.session_state.get("cv_character_reference_ids"):
         st.caption("Character-reference video generation is planned; these references are saved only.")
 
@@ -266,6 +269,9 @@ for warning in preflight.get("warnings", []):
 for reason in preflight.get("errors", []):
     st.warning(reason)
 executable = preflight.get("executable", False)
+if video_provider != "local":
+    executable = False
+    st.info("Use the script workshop, then the Gemini production panel below for cloud video. The local button does not submit cloud work.")
 if executable:
     st.success("These settings can run locally. Generation will stop at manual review.")
 else:
@@ -273,7 +279,7 @@ else:
 st.caption("OpenAI scripts require separate paid authorization. Approval and publishing remain separate manual actions.")
 
 video_authorization = None
-if catalog.get("phase", 1) >= 2 and script_provider == "openai":
+if catalog.get("phase", 1) >= 2 and script_provider == "openai" and video_provider == "local":
     st.subheader("Authorize this video's script cost")
     video_authorization = paid_authorization(api, configuration, {
         "category": category, "region": region, "limit": int(limit), "purpose": "video"
@@ -322,3 +328,6 @@ if create.button(
 
 if catalog.get("phase", 1) >= 2:
     script_workshop(api, configuration, category, region, int(limit))
+
+if catalog.get("phase", 1) >= 3:
+    cloud_production(api)

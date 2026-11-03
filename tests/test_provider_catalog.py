@@ -14,7 +14,7 @@ def test_catalog_does_not_claim_model_or_account_access(monkeypatch):
     for name in ("OPENAI_API_KEY", "GEMINI_API_KEY", "KLING_API_KEY"):
         monkeypatch.delenv(name, raising=False)
     catalog = get_catalog()
-    assert catalog["phase"] == 2
+    assert catalog["phase"] == 6
     assert len(catalog["content_types"]) == 5
     assert [item["id"] for item in catalog["content_types"] if item["executable"]] == ["realistic_short"]
     local = catalog["video_providers"][0]
@@ -37,8 +37,9 @@ def test_catalog_exposes_only_credential_presence(monkeypatch):
     assert all(provider["configured"] is True for provider in providers)
     assert providers[0]["implemented"] is True
     assert providers[0]["account_access"] == "unverified"
-    assert all(provider["implemented"] is False for provider in providers[1:])
-    assert all(provider["executable"] is False for provider in providers[1:])
+    assert all(provider["implemented"] is True for provider in providers[1:])
+    assert all(provider["executable"] is True for provider in providers[1:])
+    assert [item["id"] for item in catalog["video_providers"]] == ["local", "google"]
     serialized = json.dumps(catalog)
     assert all(secret not in serialized for secret in secrets)
 
@@ -55,8 +56,16 @@ def test_cloud_cannot_execute_with_credentials_or_payment_confirmation(monkeypat
         paid_generation_confirmed=confirmed, **changes,
     )
     validate_for_draft(config)
-    with pytest.raises(ValueError, match="planned for Phase"):
+    if provider == "kling":
+        with pytest.raises(ValueError, match="retired"):
+            validate_for_execution(config)
+    else:
         validate_for_execution(config)
+        from app.services.job_service import JobService
+        import tempfile
+        with tempfile.TemporaryDirectory() as directory:
+            with pytest.raises(ValueError, match="completed script"):
+                JobService(directory + "/test.db").create_job(generation_config=config)
 
 
 def test_openai_adapter_capability_does_not_replace_paid_authorization(monkeypatch, tmp_path):

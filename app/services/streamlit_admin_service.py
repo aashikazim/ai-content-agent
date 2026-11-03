@@ -189,3 +189,24 @@ class StreamlitAdminClient:
         return self._request("POST", f"/generation/scripts/{identifier}/reconcile", {
             "notes": notes, "confirmed": confirmed,
         })
+
+    def cloud(self, path, body=None, *, paid=False):
+        method = 'GET' if body is None else 'POST'
+        return self._request(method, '/generation/' + path, body, uncertain=paid)
+
+    def media_bytes(self, path):
+        import re
+        if not re.fullmatch(r'/(?:generation/references/[a-f0-9-]{36}/image|generation/videos/[a-f0-9-]{36}/shots/[a-f0-9-]{36}/video|jobs/[a-f0-9-]{36}/video)', path):
+            raise ContentAPIError('Invalid preview media request')
+        try:
+            with self.session.get(self.api_url + '/api/v1' + path, timeout=(3.05,60), allow_redirects=False, stream=True) as response:
+                if response.status_code != 200:
+                    raise ContentAPIError('Media is not available; refresh production history or sign in again')
+                data = bytearray()
+                for chunk in response.iter_content(65536):
+                    data.extend(chunk)
+                    if len(data) > 100 * 1024 * 1024:
+                        raise ContentAPIError('Media exceeds the dashboard preview limit')
+                return bytes(data)
+        except requests.RequestException:
+            raise ContentAPIError('The preview download was interrupted; no generation was submitted') from None

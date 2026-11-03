@@ -48,6 +48,7 @@ class FakeSession:
         self.drafts = []
         self.attempts = []
         self.fail_creation = False
+        self.fail_cloud_creation = False
         self.block_next_preflight = False
 
     def request(self, method, url, **kwargs):
@@ -81,6 +82,16 @@ class FakeSession:
             return FakeResponse({"paid": True, "maximum_cost_usd": "0.21", "quote_id": "ba7fb41f-eafa-493d-9b28-31358dc98847"})
         if path == "/generation/scripts" and method == "POST":
             return FakeResponse({"attempt_id": "ba7fb41f-eafa-493d-9b28-31358dc98848", "status": "queued"}, 202)
+        if path == "/generation/references" and method == "GET":
+            return FakeResponse({"references": []})
+        if path == "/generation/videos" and method == "GET":
+            return FakeResponse({"productions": []})
+        if path == "/generation/video-quotes":
+            return FakeResponse({"quote_id":"ba7fb41f-eafa-493d-9b28-31358dc98847","estimate_usd":"5.65","projected_estimate_usd":"5.86","shot_count":5,"notice":"Estimate only; no automatic retries"})
+        if path == "/generation/videos" and method == "POST":
+            if self.fail_cloud_creation:
+                raise requests.Timeout("Raw exception with " + CLOUD_SECRET)
+            return FakeResponse({"production_id":"ba7fb41f-eafa-493d-9b28-31358dc98846","job_id":"ba7fb41f-eafa-493d-9b28-31358dc98845","status":"queued"},202)
         if path == "/generation/catalog":
             return FakeResponse(get_catalog())
         if path == "/generation/configurations" and method == "GET":
@@ -166,7 +177,7 @@ def test_setup_required_page_has_no_registration_or_generation(api_session):
     assert len(api_session.calls) == 1
 
 
-def test_all_formats_and_configured_cloud_options_remain_planned(api_session):
+def test_cloud_options_are_implemented_but_local_button_cannot_submit_them(api_session):
     app = page()
     assert len(app.selectbox(key="cv_content_type").options) == 5
     app.selectbox(key="cv_script_provider").select("openai").run()
@@ -174,7 +185,7 @@ def test_all_formats_and_configured_cloud_options_remain_planned(api_session):
     assert not app.exception
     assert app.selectbox(key="cv_script_model_openai").value == "gpt-6.1-sol"
     assert app.selectbox(key="cv_video_model_google").value == "gemini-omni-1.1-flash"
-    assert "configured · planned integration" in visible_text(app)
+    assert "configured · implemented" in visible_text(app)
     assert button(app, "Start local generation").disabled
     assert not job_calls(api_session)
     for secret in (COOKIE_SECRET, CSRF_SECRET, CLOUD_SECRET):
@@ -185,13 +196,13 @@ def test_provider_selections_are_independent_and_survive_other_edits(api_session
     app = page()
     app.selectbox(key="cv_script_provider").select("openai").run()
     assert app.selectbox(key="cv_video_provider").value == "local"
-    app.selectbox(key="cv_video_provider").select("kling").run()
+    app.selectbox(key="cv_video_provider").select("google").run()
     app.selectbox(key="cv_visual_style").select("comic_book").run()
     assert app.selectbox(key="cv_script_model_openai").value == "gpt-6.1-sol"
-    assert app.selectbox(key="cv_video_model_kling").value == "kling-4.0"
+    assert app.selectbox(key="cv_video_model_google").value == "gemini-omni-1.1-flash"
     app.selectbox(key="cv_script_provider").select("ollama").run()
-    assert app.selectbox(key="cv_video_provider").value == "kling"
-    assert app.selectbox(key="cv_video_model_kling").value == "kling-4.0"
+    assert app.selectbox(key="cv_video_provider").value == "google"
+    assert app.selectbox(key="cv_video_model_google").value == "gemini-omni-1.1-flash"
     assert not job_calls(api_session)
 
 
@@ -227,11 +238,12 @@ def test_planned_settings_can_be_saved_and_loaded_without_execution(api_session)
     app = page()
     app.selectbox(key="cv_content_type").select("short_drama").run()
     app.selectbox(key="cv_script_provider").select("openai").run()
-    app.selectbox(key="cv_video_provider").select("kling").run()
+    app.selectbox(key="cv_video_provider").select("google").run()
+    app.selectbox(key="cv_fps").select(24)
     app.number_input(key="cv_duration_seconds").set_value(120)
     button(app, "Save settings").click().run()
     assert not app.exception
-    assert api_session.drafts[0]["config"]["video_provider"] == "kling"
+    assert api_session.drafts[0]["config"]["video_provider"] == "google"
     assert api_session.drafts[0]["config"]["duration_seconds"] == 120
     assert not job_calls(api_session)
     app.selectbox(key="cv_content_type").select("realistic_short").run()
@@ -242,7 +254,7 @@ def test_planned_settings_can_be_saved_and_loaded_without_execution(api_session)
     assert not app.exception
     assert app.selectbox(key="cv_content_type").value == "short_drama"
     assert app.selectbox(key="cv_script_provider").value == "openai"
-    assert app.selectbox(key="cv_video_provider").value == "kling"
+    assert app.selectbox(key="cv_video_provider").value == "google"
     assert app.number_input(key="cv_duration_seconds").value == 120
     assert button(app, "Start local generation").disabled
     assert not job_calls(api_session)
@@ -355,3 +367,45 @@ def test_paid_script_requires_quote_confirmation_and_resets_after_edit(api_sessi
     assert calls[0][2]['json']['quote_id']
     assert button(app, 'Generate script draft').disabled
     assert not job_calls(api_session)
+
+
+def cloud_script(session):
+    from tests.test_gemini_video import cloud_production
+    identifier = 'ba7fb41f-eafa-493d-9b28-31358dc98849'
+    session.attempts = [{'attempt_id':identifier,'model':'gpt-6.1-sol','status':'completed','production_plan':cloud_production().model_dump(mode='json')}]
+    return identifier
+
+
+def test_streamlit_video_requires_separate_quote_and_confirmation(api_session):
+    identifier = cloud_script(api_session)
+    app = page()
+    app.selectbox(key='cloud_script').select(identifier).run()
+    button(app,'Estimate Gemini video cost').click().run()
+    assert not app.exception
+    assert button(app,'Confirm paid video generation').disabled
+    calls = lambda: [call for call in api_session.calls if call[:2] == ('POST','/generation/videos')]
+    assert not calls()
+    app.checkbox(key='cloud_confirm_ba7fb41f-eafa-493d-9b28-31358dc98847').check().run()
+    button(app,'Confirm paid video generation').click().run()
+    assert not app.exception
+    assert len(calls()) == 1
+    assert calls()[0][2]['json']['confirmed'] is True
+    app.run()
+    assert len(calls()) == 1
+    assert not job_calls(api_session)
+
+
+def test_streamlit_unknown_video_acknowledgement_does_not_retry(api_session):
+    identifier = cloud_script(api_session)
+    api_session.fail_cloud_creation = True
+    app = page()
+    app.selectbox(key='cloud_script').select(identifier).run()
+    button(app,'Estimate Gemini video cost').click().run()
+    app.checkbox(key='cloud_confirm_ba7fb41f-eafa-493d-9b28-31358dc98847').check().run()
+    button(app,'Confirm paid video generation').click().run()
+    app.run()
+    assert not app.exception
+    assert 'Submission outcome is unknown' in visible_text(app)
+    assert CLOUD_SECRET not in visible_text(app)
+    assert button(app,'Confirm paid video generation').disabled
+    assert len([call for call in api_session.calls if call[:2] == ('POST','/generation/videos')]) == 1

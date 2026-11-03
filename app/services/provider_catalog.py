@@ -18,15 +18,15 @@ CONTENT_TYPES = [
     {"id": "realistic_short", "label": "Realistic short", "status": "local_preview",
      "phase": 1, "description": "Local text cards or still images with narration; no moving actors.",
      "executable": True},
-    {"id": "short_drama", "label": "Short drama", "status": "planned", "phase": 4,
-     "description": "Screenplay drafts are available; moving characters require the planned cloud video integration.",
+    {"id": "short_drama", "label": "Short drama", "status": "gemini_video", "cloud_executable": True, "phase": 4,
+     "description": "Screenplay, character references and Gemini moving shots; manual continuity checks required.",
      "executable": False},
-    {"id": "animated_comedy", "label": "Animated comedy", "status": "planned", "phase": 4,
-     "description": "Comedy/satire script drafts are available; character continuity and animation are planned.", "executable": False},
+    {"id": "animated_comedy", "label": "Animated comedy", "status": "gemini_video", "cloud_executable": True, "phase": 4,
+     "description": "Fiction/satire character designs and Gemini animated shots with human continuity checks.", "executable": False},
     {"id": "long_drama", "label": "Long drama", "status": "planned", "phase": None,
      "description": "Planned for a later phase; long-form shot orchestration is not implemented.", "executable": False},
-    {"id": "news", "label": "News", "status": "planned", "phase": 6,
-     "description": "Unverified script drafts and trend discovery are available; verified news research is planned.",
+    {"id": "news", "label": "News", "status": "unverified_gemini_illustration", "cloud_executable": True, "phase": 6,
+     "description": "Unverified news drafts and AI illustrative footage; source verification remains a human responsibility.",
      "executable": False},
 ]
 
@@ -83,7 +83,7 @@ def get_catalog() -> dict:
         "character_references": "schema_unverified", "account_access": "unverified",
     }
     return {
-        "schema_version": 1, "phase": 2,
+        "schema_version": 1, "phase": 6,
         "content_types": [dict(item) for item in CONTENT_TYPES],
         "script_providers": [
             {"id": "ollama", "label": "Local Ollama", "configured": True,
@@ -112,8 +112,11 @@ def get_catalog() -> dict:
                          "resolutions": ["720p", "1080p"], "fps": [24, 30],
                          "duration_seconds": {"min": 30, "max": 60},
                          "motion": False, "model_audio": False}]},
-            _cloud_provider("google", "Google Gemini", "GEMINI_API_KEY", 3, google),
-            _cloud_provider("kling", "Kling", "KLING_API_KEY", 5, kling),
+            {**_cloud_provider("google", "Google Gemini", "GEMINI_API_KEY", 3, google),
+             "implemented": True, "executable": bool(os.getenv("GEMINI_API_KEY")),
+             "status": "account_access_unverified" if os.getenv("GEMINI_API_KEY") else "not_configured",
+             "reason": "Gemini native 720p footage with audio, reference images and explicit paid authorization. 1080p is upscaled locally. Background/account access is unverified.",
+             "models": [{**google, "implemented": True, "status": "account_access_unverified", "character_references": "supported", "native_resolution": "720p"}]},
         ],
         "image_models": [{"id": _local_image_model(), "label": _local_image_model(),
                           "status": "model_access_unverified", "implemented": True}],
@@ -162,6 +165,8 @@ def validate_for_script(config: GenerationConfig) -> None:
     """Validate a script-only draft; it does not enable cloud video adapters."""
     config = GenerationConfig.model_validate(config)
     validate_for_draft(config)
+    if config.video_provider == "kling":
+        raise ValueError("Kling was retired; explicitly choose Google or the local pipeline")
     if config.script_provider == "openai" and not os.getenv("OPENAI_API_KEY"):
         raise ValueError("OPENAI_API_KEY is not configured; choose local Ollama or configure the key on the server")
     if config.duration_seconds > 60 or config.content_type == "long_drama":
@@ -176,9 +181,9 @@ def validate_for_execution(config: GenerationConfig) -> None:
     """Validate a renderable job; paid authorization is also enforced in JobService."""
     config = GenerationConfig.model_validate(config)
     validate_for_script(config)
-    if config.video_provider != "local":
-        phase = 3 if config.video_provider == "google" else 5
-        raise ValueError(f"Cloud video generation is planned for Phase {phase}; save a draft or choose the local preview")
+    if config.video_provider == "google":
+        validate_for_cloud_video(config)
+        return
     if config.content_type != "realistic_short":
         raise ValueError("Video production for this content type is planned; use the script workshop or the realistic-short local preview")
     if config.require_motion:
@@ -191,3 +196,15 @@ def validate_for_execution(config: GenerationConfig) -> None:
         raise ValueError("Character references are not implemented; remove references or save a draft")
     if config.captions != "scene_text":
         raise ValueError("Timed captions are not implemented; choose scene text or save a draft")
+
+
+def validate_for_cloud_video(config: GenerationConfig) -> None:
+    validate_for_script(config)
+    if config.video_provider != "google":
+        raise ValueError("Select Google Gemini explicitly for cloud video")
+    if not os.getenv("GEMINI_API_KEY"):
+        raise ValueError("GEMINI_API_KEY is not configured")
+    if config.content_type == "long_drama":
+        raise ValueError("Long drama remains planned; current productions support 30–60 seconds")
+    if config.content_type in {"short_drama", "animated_comedy"} and config.narration != "model_audio":
+        raise ValueError("Character dialogue requires Gemini model audio; local TTS is a single narrator")

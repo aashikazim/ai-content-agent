@@ -93,13 +93,13 @@ def test_catalog_distinguishes_credentials_adapter_and_model_access(generation_a
     response = api.client.get("/api/v1/generation/catalog", headers=api.api_headers)
     assert response.status_code == 200
     catalog = response.json()
-    assert catalog["phase"] == 2
+    assert catalog["phase"] == 6
     providers = catalog["script_providers"][1:] + catalog["video_providers"][1:]
     assert all(item["configured"] is True for item in providers)
     assert providers[0]["implemented"] is True
     assert providers[0]["executable"] is True
-    assert all(item["implemented"] is False for item in providers[1:])
-    assert all(item["executable"] is False for item in providers[1:])
+    assert all(item["implemented"] is True for item in providers[1:])
+    assert all(item["executable"] is True for item in providers[1:])
     assert all(item["account_access"] == "unverified" for item in providers)
     assert all(value not in response.text for value in dummy_secrets)
     assert_no_generation(api)
@@ -235,13 +235,12 @@ def test_cloud_models_never_queue_or_execute_even_with_credentials_and_confirmat
     response = api.client.post("/api/v1/generation/preflight", headers=api.api_headers,
                                json={"configuration": config})
     assert response.status_code == 200
-    assert response.json()["executable"] is False
-    assert response.json()["errors"]
+    assert response.json()["executable"] is (changes["video_provider"] == "google")
     assert response.json()["paid_request"] is False
     response = api.client.post("/api/v1/jobs", headers=api.api_headers,
                                json={"generation_config": config})
     assert response.status_code == 422
-    assert "planned for Phase" in response.json()["detail"]
+    assert ("completed script" if changes["video_provider"] == "google" else "retired") in response.json()["detail"]
     assert_no_generation(api)
 
 

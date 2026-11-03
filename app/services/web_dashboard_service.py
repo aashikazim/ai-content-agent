@@ -86,7 +86,7 @@ class WebDashboardService:
                 "approved": counts.get("approved", 0),
                 "failed_jobs": counts.get("failed", 0),
                 "active_jobs": sum(counts.get(s, 0) for s in (
-                    "queued", "discovering", "planning", "rendering"
+                    "queued", "discovering", "planning", "rendering", "processing"
                 )),
                 "publication_attempts": len(publications),
                 "reported_views": sum(s["views"] or 0 for s in snapshots),
@@ -152,7 +152,7 @@ class WebDashboardService:
                 "license": entry.get("license"),
                 "attribution": entry.get("attribution"),
             })
-        return {"status": saved.get("status"), "warning": warning, "scenes": scenes}
+        return {"status": saved.get("status"), "warning": warning, "scenes": scenes, "factual_status":saved.get("factual_status"), "technical_quality":saved.get("technical_quality"), "warnings":saved.get("warnings", [])}
 
     def details(self, job_id):
         job = self.jobs.get_job(job_id)

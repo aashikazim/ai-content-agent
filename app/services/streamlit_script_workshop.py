@@ -31,7 +31,7 @@ def paid_authorization(api, configuration, context, key):
 def script_workshop(api, configuration, category, region, limit):
     st.divider()
     st.subheader("Script workshop")
-    st.caption("Draft and revise 30–60-second outlines, dialogue and narration. News remains unverified; drama/animation video and long drama are later phases.")
+    st.caption("Draft and revise 30–60-second outlines, dialogue and narration. Google-selected scripts include moving-shot plans. News remains unverified; long drama is planned.")
     try:
         attempts = api.scripts()
     except ContentAPIError as error:

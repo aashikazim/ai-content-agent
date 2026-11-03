@@ -23,6 +23,17 @@ class DialogueLine(BaseModel):
     text: str = Field(min_length=1, max_length=1000)
 
 
+class PlannedShot(BaseModel):
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+    shot_number: int = Field(ge=1, le=12)
+    scene_number: int = Field(ge=1, le=12)
+    duration_seconds: int = Field(ge=3, le=10, strict=True)
+    action: str = Field(min_length=1, max_length=1500)
+    camera: str = Field(min_length=1, max_length=500)
+    spoken_text: str = Field(default="", max_length=1500)
+    character_ids: list[str] = Field(default_factory=list, max_length=3)
+
+
 class ProductionPlan(BaseModel):
     model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
     schema_version: Literal[1] = 1
@@ -31,6 +42,7 @@ class ProductionPlan(BaseModel):
     outline: list[str] = Field(min_length=1, max_length=12)
     characters: list[CharacterProfile] = Field(default_factory=list, max_length=3)
     dialogue: list[DialogueLine] = Field(default_factory=list, max_length=100)
+    shots: list[PlannedShot] = Field(default_factory=list, max_length=12)
     content_plan: ContentPlan
 
     @model_validator(mode="after")
@@ -56,6 +68,22 @@ class ProductionPlan(BaseModel):
                 raise ValueError("All dialogue must be included in its scene's spoken narration")
         if self.content_type == "short_drama" and not self.dialogue:
             raise ValueError("Short drama requires dialogue")
+        if self.shots:
+            if [shot.shot_number for shot in self.shots] != list(range(1, len(self.shots) + 1)):
+                raise ValueError("Shot numbers must be sequential")
+            if [shot.scene_number for shot in self.shots] != sorted(shot.scene_number for shot in self.shots):
+                raise ValueError("Shots must follow scene order")
+            for shot in self.shots:
+                if shot.scene_number not in scenes or not set(shot.character_ids).issubset(ids):
+                    raise ValueError("Shots must reference existing scenes and characters")
+            import re
+            words = lambda text: re.findall(r"\w+", text.casefold())
+            for number, scene in scenes.items():
+                selected = [shot for shot in self.shots if shot.scene_number == number]
+                if sum(shot.duration_seconds for shot in selected) != scene.duration_seconds:
+                    raise ValueError("Shot durations must cover each scene exactly")
+                if words(" ".join(shot.spoken_text for shot in selected)) != words(scene.narration):
+                    raise ValueError("Shot speech must preserve the complete scene narration in order")
         return self
 
     def validate_configuration(self, config):
@@ -67,6 +95,15 @@ class ProductionPlan(BaseModel):
             raise ValueError("The script exceeds the selected scene limit")
         if NarrationService().validate_plan(self.content_plan):
             raise ValueError("The script exceeds scene narration word budgets; request a shorter revision")
+        if config.video_provider == "google":
+            if self.content_type == "animated_comedy" and not self.characters:
+                raise ValueError("Animated character video requires at least one designed character")
+            if config.narration == "model_audio" and any(NarrationService().count_words(shot.spoken_text) > NarrationService().max_words(shot.duration_seconds) for shot in self.shots):
+                raise ValueError("Shot dialogue exceeds its spoken word budget")
+            if not self.shots:
+                raise ValueError("Gemini video needs a shot plan; request a script revision with 3–10-second shots")
+            if len(self.shots) > config.max_shots:
+                raise ValueError("The shot plan exceeds the selected shot limit")
         return self
 
 
