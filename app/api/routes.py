@@ -17,7 +17,8 @@ from app.agents.trend_agent import CATEGORIES
 from app.services.job_service import JobService
 from app.services.content_storage import ContentStorage
 from app.workflows.content_workflow import ContentWorkflow
-
+from app.services.publishing_service import PublishingService
+from app.services.publishing_storage import PublishingStorage
 
 router = APIRouter(prefix="/api/v1")
 
@@ -213,3 +214,76 @@ def review_job(
         raise HTTPException(
             409, str(exc)
         ) from exc
+
+
+class PublishRequest(BaseModel):
+    platform: Literal["youtube", "facebook"]
+    dry_run: bool = True
+
+
+@router.post(
+    "/jobs/{job_id}/publish",
+    dependencies=[Depends(require_api_key)]
+)
+def publish_job(
+    job_id: str,
+    request: PublishRequest
+):
+    service = PublishingService()
+
+    try:
+        return service.publish(
+            job_id=job_id,
+            platform=request.platform,
+            dry_run=request.dry_run
+        )
+
+    except KeyError as exc:
+        raise HTTPException(
+            status_code=404,
+            detail=str(exc)
+        ) from exc
+
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail=str(exc)
+        ) from exc
+
+    except FileNotFoundError as exc:
+        raise HTTPException(
+            status_code=404,
+            detail=str(exc)
+        ) from exc
+
+    except Exception as exc:
+        import logging
+        logging.exception(
+            "Publishing failed for job %s", job_id
+        )
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                "Publishing failed or its outcome "
+                "is uncertain. Inspect the "
+                "publication record."
+            )
+        ) from exc
+
+
+@router.get(
+    "/publications/{publication_id}",
+    dependencies=[Depends(require_api_key)]
+)
+def get_publication(publication_id: str):
+    storage = PublishingStorage(DB_PATH)
+
+    publication = storage.get(publication_id)
+
+    if publication is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Publication not found"
+        )
+
+    return publication

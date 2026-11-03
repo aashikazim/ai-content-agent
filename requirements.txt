@@ -19,6 +19,7 @@ google-api-core==2.43.2
 google-api-python-client==2.201.0
 google-auth==2.62.0
 google-auth-httplib2==0.4.4
+google-auth-oauthlib==1.5.0
 googleapis-common-protos==1.76.0
 h11==0.16.0
 hf-xet==1.8.0
@@ -64,6 +65,7 @@ nvidia-nccl-cu13==2.30.7
 nvidia-nvjitlink==13.4.92
 nvidia-nvshmem-cu13==3.7.2
 nvidia-nvtx==13.2.86
+oauthlib==4.0.1
 ollama==0.6.3
 opentelemetry-api==1.45.2
 orjson==3.13.0
@@ -86,6 +88,7 @@ python-dotenv==1.2.4
 PyYAML==6.0.3
 regex==2026.9.29
 requests==2.34.2
+requests-oauthlib==2.0.0
 requests-toolbelt==1.0.0
 rich==15.0.0
 safetensors==0.8.0

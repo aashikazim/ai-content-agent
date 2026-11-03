@@ -13,3 +13,7 @@ agent.md
 data/plans/*.json
 data/videos/
 
+# OAuth and platform credentials
+credentials/
+token.json
+client_secret*.json
