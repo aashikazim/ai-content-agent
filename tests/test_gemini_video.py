@@ -381,3 +381,78 @@ def test_discarding_unsubmitted_shots_never_spends_or_retries_unknown_request(vi
     assert fake.posts==1
     instance.process(value['production_id'])
     assert fake.posts==1
+
+
+def test_async_failure_parses_errors_array_without_reflecting_provider_text():
+    body=rest('failed')
+    body['errors']=[{'code':'RESOURCE_EXHAUSTED','message':'Provider text contains private-fixture-key'},
+                    {'code':'private-fixture-key','message':'Do not store this either'}]
+    value=GeminiVideoService.snapshot(body)
+    assert value['status']=='failed'
+    assert value['errors'][0]['code']=='RESOURCE_EXHAUSTED'
+    assert value['errors'][1]['code']=='UNKNOWN_PROVIDER_ERROR'
+    assert 'private-fixture' not in json.dumps(value)
+    assert 'Google AI Studio' in value['errors'][0]['message']
+
+
+def test_http_quota_error_is_actionable_without_exposing_response(monkeypatch):
+    monkeypatch.setenv('GEMINI_API_KEY','private-fixture-key')
+    session=Mock()
+    session.request.return_value=response({'error':{'code':429,'status':'RESOURCE_EXHAUSTED','message':'private-fixture-key'}},429)
+    with pytest.raises(VideoProviderError,match='RESOURCE_EXHAUSTED') as error:
+        GeminiVideoService(session).submit('Moving clip',aspect_ratio='9:16')
+    assert 'private-fixture-key' not in str(error.value)
+    assert 'rate limits' in str(error.value)
+    session.request.assert_called_once()
+
+
+def test_immediate_provider_failure_stops_paid_batch_and_surfaces_root_cause(video_service):
+    instance,fake,renderer=video_service
+    value=instance.create(instance.quote('script-fixture','admin')['quote_id'],'admin',True)
+    fake.submit=Mock(return_value=GeminiVideoService.snapshot({**rest('failed'),'errors':[{'code':'RESOURCE_EXHAUSTED','message':'Private provider response'}]}))
+    value=instance.process(value['production_id'],submit_queued=True)
+    assert value['status']=='failed'
+    assert 'Shot 1 (v1)' in value['error'] and 'RESOURCE_EXHAUSTED' in value['error']
+    assert 'RESOURCE_EXHAUSTED' in instance.jobs.get_job(value['job_id'])['error']
+    assert sum(item['status']=='queued' for item in value['shots'])==4
+    assert any(event['event']=='provider_failure' for event in value['events'])
+    fake.submit.assert_called_once()
+    instance.process(value['production_id'])
+    fake.submit.assert_called_once()
+    renderer.assemble.assert_not_called()
+
+
+def test_legacy_failed_interaction_refreshes_diagnostics_once_without_generation(video_service):
+    from app.services.gemini_video_service import LEGACY_FAILURE_MESSAGE
+    instance,fake,renderer=video_service
+    value=instance.create(instance.quote('script-fixture','admin')['quote_id'],'admin',True)
+    with instance.storage.connect() as conn:
+        for shot in value['shots']:
+            conn.execute("UPDATE video_shots SET status='failed',interaction_id=?,error=? WHERE attempt_id=?",
+                         ('v1_legacy_'+str(shot['shot_number']),LEGACY_FAILURE_MESSAGE,shot['attempt_id']))
+    def retrieve(identifier):
+        return {'interaction_id':identifier,'status':'failed','usage':{},'errors':[{'code':'RESOURCE_EXHAUSTED','message':'private provider detail'}]}
+    fake.retrieve=Mock(side_effect=retrieve)
+    value=instance.process(value['production_id'])
+    assert 'RESOURCE_EXHAUSTED' in value['error']
+    assert all('RESOURCE_EXHAUSTED' in shot['error'] for shot in value['shots'])
+    assert fake.posts==0 and fake.retrieve.call_count==5
+    instance.process(value['production_id'])
+    assert fake.posts==0 and fake.retrieve.call_count==5
+    renderer.assemble.assert_not_called()
+
+
+def test_failure_diagnostic_refresh_preserves_known_usage_and_quote(video_service):
+    instance,fake,renderer=video_service
+    value=instance.create(instance.quote('script-fixture','admin')['quote_id'],'admin',True)
+    shot=value['shots'][0]
+    usage={'total_input_tokens':100,'total_output_tokens':5802,'total_thought_tokens':49,
+           'output_tokens_by_modality':[{'modality':'video','tokens':5792},{'modality':'text','tokens':10}]}
+    instance.record(shot['attempt_id'],{'interaction_id':'v1_usage','status':'in_progress','usage':usage})
+    before=instance.storage.attempt(shot['attempt_id'])
+    instance.record(shot['attempt_id'],{'interaction_id':'v1_usage','status':'failed','usage':{},'errors':[{'code':'RESOURCE_EXHAUSTED'}]})
+    after=instance.storage.attempt(shot['attempt_id'])
+    assert after['usage_json']==before['usage_json']
+    assert after['calculated_cost_usd']==before['calculated_cost_usd']=='0.102041'
+    assert after['quote_id']==before['quote_id']
+    assert after['interaction_id']=='v1_usage' and after['actual_cost_usd'] is None

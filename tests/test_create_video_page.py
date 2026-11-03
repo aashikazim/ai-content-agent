@@ -383,9 +383,13 @@ def test_streamlit_video_requires_separate_quote_and_confirmation(api_session):
     button(app,'Estimate Gemini video cost').click().run()
     assert not app.exception
     assert button(app,'Confirm paid video generation').disabled
+    assert any(element.value == 'Authorize Gemini video cost' for element in app.subheader)
+    assert 'Check the Gemini video authorization checkbox above' in visible_text(app)
     calls = lambda: [call for call in api_session.calls if call[:2] == ('POST','/generation/videos')]
     assert not calls()
     app.checkbox(key='cloud_confirm_ba7fb41f-eafa-493d-9b28-31358dc98847').check().run()
+    assert not button(app,'Confirm paid video generation').disabled
+    assert 'Video cost authorized' in visible_text(app)
     button(app,'Confirm paid video generation').click().run()
     assert not app.exception
     assert len(calls()) == 1

@@ -198,3 +198,10 @@
 .cloud-shot-heading span { font-size:12px; color:#526d40; }
 .cloud-shot .button, .cloud-production .button { white-space:normal; line-height:1.5; }
 @media(max-width:800px) { .cloud-shots { grid-template-columns:minmax(0,1fr); } }
+.generation-video-consent { margin:20px 0 12px; padding:12px; border:2px solid #7d9b61; border-radius:10px; background:#fff; }
+.generation-workspace .generation-video-consent .checkbox-label { display:flex; align-items:flex-start; gap:14px; min-height:44px; margin:0; padding:6px; color:#25352e; }
+.generation-workspace .generation-video-consent input[type=checkbox] { display:block; position:static; opacity:1; width:24px; height:24px; min-width:24px; min-height:24px; margin:2px 0 0; padding:0; flex:0 0 24px; accent-color:#406125; }
+.generation-video-consent .checkbox-label > span { display:grid; gap:6px; }
+.generation-video-consent strong { font-size:16px; line-height:1.5; }
+.generation-video-consent .checkbox-label > span > span { font-size:14px; line-height:1.7; }
+.cloud-production .generation-submit-requirement { border-left:3px solid #7d9b61; padding:10px 14px; background:#fff; color:#344b2d; }

@@ -17,6 +17,56 @@ MODEL = 'gemini-omni-1.1-flash'
 BASE = 'https://generativelanguage.googleapis.com/v1beta'
 MAX_VIDEO_BYTES = 100 * 1024 * 1024
 MAX_JSON_BYTES = 140 * 1024 * 1024
+LEGACY_FAILURE_MESSAGE = 'Provider generation did not complete; inspect history before a separately authorized change'
+
+# Provider messages may echo submitted material or credentials. Expose known
+# diagnostic codes with application-owned guidance instead of raw error bodies.
+ERROR_GUIDANCE = {
+    'RESOURCE_EXHAUSTED': 'Google quota or capacity is exhausted. Check the Gemini project billing, credits and model rate limits in Google AI Studio before authorizing another attempt.',
+    'UNAUTHENTICATED': 'Google rejected the configured credentials. Check the server API key and its restrictions.',
+    'PERMISSION_DENIED': 'Google denied model or project access. Check project permissions, API-key restrictions and model availability.',
+    'FAILED_PRECONDITION': 'Google project prerequisites are not satisfied. Check model availability, billing and project settings.',
+    'INVALID_ARGUMENT': 'Google rejected the video settings. Check the selected model and supported request parameters.',
+    'NOT_FOUND': 'The Google model or stored interaction was not found. Check model access and interaction retention.',
+    'UNAVAILABLE': 'Google video generation is temporarily unavailable. Inspect provider status before a separately authorized attempt.',
+    'INTERNAL': 'Google could not process this video request. Inspect provider usage before a separately authorized attempt.',
+    'DEADLINE_EXCEEDED': 'Google did not finish the request in time. Retrieve the existing interaction and inspect usage before another attempt.',
+    'CANCELLED': 'Google reported that the request was cancelled. Inspect usage before authorizing a new attempt.',
+    'UNKNOWN_PROVIDER_ERROR': 'Google reported a generation failure without a recognized diagnostic code. Inspect Google AI Studio usage and project settings.',
+}
+HTTP_ERROR_CODES = {400: 'INVALID_ARGUMENT', 401: 'UNAUTHENTICATED', 403: 'PERMISSION_DENIED',
+                    404: 'NOT_FOUND', 408: 'DEADLINE_EXCEEDED', 429: 'RESOURCE_EXHAUSTED',
+                    500: 'INTERNAL', 503: 'UNAVAILABLE', 504: 'DEADLINE_EXCEEDED'}
+
+
+def safe_provider_errors(body, *, http_status=None):
+    """Normalize documented errors[] and HTTP error{} without reflecting text."""
+    entries = body.get('errors') if isinstance(body.get('errors'), list) else []
+    entries = entries[:5]
+    if isinstance(body.get('error'), dict):
+        entries = [body['error'], *entries][:5]
+    result = []
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        code = entry.get('status') or entry.get('code')
+        if type(code) is int:
+            code = HTTP_ERROR_CODES.get(code)
+        if not isinstance(code, str) or code not in ERROR_GUIDANCE:
+            code = 'UNKNOWN_PROVIDER_ERROR'
+        if not any(item['code'] == code for item in result):
+            result.append({'code': code, 'message': ERROR_GUIDANCE[code]})
+    if not result and http_status in HTTP_ERROR_CODES:
+        code = HTTP_ERROR_CODES[http_status]
+        result.append({'code': code, 'message': ERROR_GUIDANCE[code]})
+    return result
+
+
+def provider_failure_message(snapshot):
+    errors = safe_provider_errors(snapshot)
+    if errors:
+        return ' '.join(f"Google reported {item['code']}: {item['message']}" for item in errors[:2]) + ' No automatic retry was sent.'
+    return 'Google generation did not complete and supplied no diagnostic code. Inspect provider usage before a separately authorized attempt; no automatic retry was sent.'
 
 
 class VideoProviderError(RuntimeError):
@@ -50,16 +100,28 @@ class GeminiVideoService:
                 json=payload, timeout=(5, 180 if method == 'POST' else 60),
                 allow_redirects=False, stream=True)
             with response:
-                if response.status_code not in ({200,201,202} if method == 'POST' else {200}):
-                    raise VideoProviderError(
-                        'Google rejected the request; check model access, quota and settings. No automatic retry was sent.',
-                        uncertain=method == 'POST' and (response.status_code >= 500 or response.status_code in {408, 409}),
-                    )
+                accepted = response.status_code in ({200,201,202} if method == 'POST' else {200})
                 data = bytearray()
+                limit = MAX_JSON_BYTES if accepted else 65536
                 for chunk in response.iter_content(65536):
                     data.extend(chunk)
-                    if len(data) > MAX_JSON_BYTES:
-                        raise VideoProviderError('Google response exceeded the download limit', uncertain=method == 'POST')
+                    if len(data) > limit:
+                        if accepted:
+                            raise VideoProviderError('Google response exceeded the download limit', uncertain=method == 'POST')
+                        break
+                if not accepted:
+                    try:
+                        body = json.loads(data)
+                        if not isinstance(body, dict):
+                            body = {}
+                    except (ValueError, TypeError):
+                        body = {}
+                    errors = safe_provider_errors(body, http_status=response.status_code)
+                    raise VideoProviderError(
+                        provider_failure_message({'errors': errors}) if errors else
+                        f'Google rejected the request (HTTP {response.status_code}); check model access, quota and settings. No automatic retry was sent.',
+                        uncertain=method == 'POST' and (response.status_code >= 500 or response.status_code in {408, 409}),
+                    )
                 result = json.loads(data)
                 if not isinstance(result, dict):
                     raise ValueError
@@ -111,7 +173,8 @@ class GeminiVideoService:
         usage = body.get('usage') or {}
         return {'interaction_id': identifier, 'status': status,
                 'video': videos[-1] if videos else None,
-                'usage': usage if isinstance(usage, dict) else {}}
+                'usage': usage if isinstance(usage, dict) else {},
+                'errors': safe_provider_errors(body)}
 
     def download(self, snapshot, destination):
         identifier = interaction_id(snapshot['interaction_id'])

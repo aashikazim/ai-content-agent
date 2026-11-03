@@ -56,7 +56,14 @@ def cloud_production(api):
         st.info(f"Estimated request cost: ${quote['estimate_usd']}; {quote['shot_count']} shot(s). Projected production estimate: ${quote['projected_estimate_usd']}.")
         st.write(quote['notice'])
         st.write(quote.get('request_summary',{}))
+        st.subheader('Authorize Gemini video cost')
         confirmed = st.checkbox('I authorize these Gemini requests and transfer of the selected material at the displayed estimated cost', key='cloud_confirm_' + quote['quote_id'])
+        if uncertain:
+            st.warning('A previous submission has an unknown outcome. Inspect production history and Google usage before requesting a new quote.')
+        elif not confirmed:
+            st.info('Check the Gemini video authorization checkbox above to enable Confirm paid video generation. Script-cost authorization is separate.')
+        else:
+            st.caption('Video cost authorized. Generation starts only when you click Confirm paid video generation.')
         if st.button('Confirm paid video generation', disabled=not confirmed or uncertain):
             try:
                 path = 'videos' if quote['kind'] == 'create' else f"videos/{quote['production_id']}/shots"

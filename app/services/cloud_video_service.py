@@ -18,7 +18,9 @@ from app.services.character_reference_service import CharacterReferenceService
 from app.services.cloud_video_storage import CloudVideoStorage
 from app.services.cloud_video_renderer import CloudVideoRenderer, validate_clip, MediaValidationError
 from app.services.content_storage import ContentStorage
-from app.services.gemini_video_service import GeminiVideoService, VideoProviderError
+from app.services.gemini_video_service import (
+    GeminiVideoService, VideoProviderError, LEGACY_FAILURE_MESSAGE, provider_failure_message,
+)
 from app.services.generation_storage import GenerationStorage
 from app.services.job_service import JobService
 from app.services.provider_catalog import validate_for_cloud_video
@@ -225,10 +227,17 @@ Do not invent evidence or real-world verification; this is an AI-generated visua
                        + Decimal(counts.get('text',0) + clean['total_thought_tokens']) * Decimal('9')) / 1_000_000)
         state = snapshot['status']
         status = 'processing' if state == 'in_progress' else 'download_pending' if state == 'completed' else 'failed' if state in {'failed','cancelled','incomplete'} else 'needs_reconciliation'
+        error = None if status in {'processing','download_pending'} else provider_failure_message(snapshot)
         with self.storage.connect() as conn:
+            previous = conn.execute('SELECT * FROM video_shots WHERE attempt_id=?', (attempt_id,)).fetchone()
+            if not previous:
+                raise ValueError('Shot attempt not found')
+            saved_usage = json.dumps(clean) if clean else previous['usage_json'] or '{}'
+            saved_cost = cost if clean else previous['calculated_cost_usd']
             conn.execute('''UPDATE video_shots SET interaction_id=?,status=?,usage_json=?,calculated_cost_usd=?,error=?,updated_at=? WHERE attempt_id=?''',
-                (snapshot['interaction_id'], status, json.dumps(clean), cost,
-                 None if status in {'processing','download_pending'} else 'Provider generation did not complete; inspect history before a separately authorized change', int(time.time()), attempt_id))
+                (snapshot['interaction_id'], status, saved_usage, saved_cost, error, int(time.time()), attempt_id))
+            if error and (previous['status'] != status or previous['error'] != error):
+                self.storage.event(conn, previous['production_id'], 'provider_failure', error, attempt_id)
         return status
 
     def process(self, identifier, *, submit_queued=False, attempt_ids=None):
@@ -275,11 +284,18 @@ Do not invent evidence or real-world verification; this is an AI-generated visua
                         references=[Path(ref['image_path']).read_bytes() for ref in refs] if attempt['operation'] == 'generate' else (),
                         previous_id=parent['interaction_id'] if parent and attempt['operation'] != 'generate' else None,
                         operation=attempt['operation'])
-                elif status in {'processing', 'download_pending', 'needs_reconciliation', 'download_failed'} and attempt['interaction_id']:
+                elif (status in {'processing', 'download_pending', 'needs_reconciliation', 'download_failed'}
+                      or (status == 'failed' and attempt['error'] == LEGACY_FAILURE_MESSAGE)) and attempt['interaction_id']:
+                    # Older failures did not retain Google's errors[] codes.
+                    # Refresh those existing IDs once, without a generation POST.
                     snapshot = self.provider.retrieve(attempt['interaction_id'])
                 else:
                     continue
                 status = self.record(attempt['attempt_id'], snapshot)
+                if submit_queued and status in {'failed', 'needs_reconciliation'}:
+                    # A successful HTTP submission can already contain a terminal
+                    # provider failure. Do not spend more of the authorized batch.
+                    break
                 if status == 'download_pending':
                     path = self.root / identifier / (attempt['attempt_id'] + '.mp4')
                     self.provider.download(snapshot, path)
@@ -349,9 +365,16 @@ Do not invent evidence or real-world verification; this is an AI-generated visua
                 self.jobs.update_job(value['job_id'], 'failed', error=message)
         else:
             state = 'needs_reconciliation' if any(shot['status'] == 'needs_reconciliation' for shot in value['shots']) else 'failed' if failed else 'processing'
+            missing = {shot['shot_number']: shot for shot in value['shots']
+                       if shot['status'] in {'failed','validation_failed','download_failed','needs_reconciliation','cancelled'}
+                       and not any(item['shot_number'] == shot['shot_number'] for item in selected)}
+            error = None
+            if missing:
+                first = missing[min(missing)]
+                error = f"Shot {first['shot_number']} (v{first['version']}): {first['error'] or 'No validated video asset is available.'}"
             with self.storage.connect() as conn:
-                conn.execute('UPDATE video_productions SET status=?,updated_at=? WHERE production_id=?', (state, int(time.time()), identifier))
-            self.jobs.update_job(value['job_id'], state, error='Inspect shot history and resolve missing assets' if failed else None)
+                conn.execute('UPDATE video_productions SET status=?,error=?,updated_at=? WHERE production_id=?', (state, error, int(time.time()), identifier))
+            self.jobs.update_job(value['job_id'], state, error=error)
         return self.storage.get(identifier)
 
 

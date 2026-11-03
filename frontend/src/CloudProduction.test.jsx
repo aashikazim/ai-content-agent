@@ -29,7 +29,11 @@ it('requires separate quote and explicit confirmation for video and never publis
   await user.click(screen.getByRole('button',{name:'Estimate Gemini video cost'}));
   const submit=await screen.findByRole('button',{name:'Confirm paid video generation'});
   expect(submit).toBeDisabled();expect(paid(request)).toHaveLength(0);
+  expect(submit).toHaveAccessibleDescription(/Check “Authorize Gemini video cost” above/);
+  expect(screen.getByText('Authorize Gemini video cost')).toBeVisible();
   await user.click(screen.getByRole('checkbox',{name:/I authorize these Gemini requests/}));
+  expect(submit).toBeEnabled();
+  expect(submit).toHaveAccessibleDescription(/Video cost authorized/);
   await user.click(submit);
   await waitFor(()=>expect(paid(request)).toHaveLength(1));
   expect(JSON.parse(paid(request)[0][1].body)).toEqual({quote_id:identifier,confirmed:true});
@@ -54,9 +58,26 @@ it('blocks another paid request after a lost acknowledgement',async()=>{
   await user.click(screen.getByRole('button',{name:'Confirm paid video generation'}));
   await screen.findByText(/Submission outcome is unknown/);
   expect(screen.getByRole('button',{name:'Confirm paid video generation'})).toBeDisabled();
+  expect(screen.getByRole('button',{name:'Confirm paid video generation'})).toHaveAccessibleDescription(/previous submission has an unknown outcome/);
   await user.click(screen.getByRole('button',{name:'Refresh production history'}));
   expect(paid(request)).toHaveLength(1);
   expect(screen.getByRole('button',{name:'Allow a separately quoted request'})).toBeDisabled();
+});
+
+it('keeps video generation disabled when cost authorization is unchecked again',async()=>{
+  const user=userEvent.setup();const request=api();render(<CloudProduction request={request}/>);
+  await screen.findByRole('option',{name:/A moving original story/});
+  await user.selectOptions(screen.getByLabelText('Completed script with a shot plan'),scriptId);
+  await user.click(screen.getByRole('button',{name:'Estimate Gemini video cost'}));
+  const authorization=await screen.findByRole('checkbox',{name:/Authorize Gemini video cost/});
+  const submit=screen.getByRole('button',{name:'Confirm paid video generation'});
+  expect(submit).toBeDisabled();
+  await user.click(authorization);
+  expect(submit).toBeEnabled();
+  await user.click(authorization);
+  expect(submit).toBeDisabled();
+  expect(submit).toHaveAccessibleDescription(/Script-cost authorization is separate/);
+  expect(paid(request)).toHaveLength(0);
 });
 it('requires all human quality checks and sends to review without approving',async()=>{
   const user=userEvent.setup();const request=api({existing:true});render(<CloudProduction request={request}/>);
@@ -88,4 +109,24 @@ it('keeps retrieving status while all clips are complete but local assembly is r
   await screen.findByRole('button',{name:'Send video to manual review'});
   expect(paid(request)).toHaveLength(0);
   expect(request.mock.calls.some(([path])=>path.endsWith('/refresh'))).toBe(true);
+});
+
+it('shows a failed production diagnostic and safely refreshes without paid generation',async()=>{
+  const user=userEvent.setup();const request=api({existing:true});const original=request.getMockImplementation();
+  const failed={...production,status:'failed',error:'Shot 1 (v2): Google reported RESOURCE_EXHAUSTED. Check Gemini project billing, credits and model rate limits.',shots:[]};
+  request.mockImplementation(async(path,options)=>{
+    if(path==='/generation/videos' && !options?.method) return {productions:[failed]};
+    if(path===`/generation/videos/${identifier}`) return failed;
+    if(path===`/generation/videos/${identifier}/refresh`) return {status:'retrieval_requested'};
+    return original(path,options);
+  });
+  render(<CloudProduction request={request}/>);
+  await screen.findByLabelText('Existing production');
+  await user.selectOptions(screen.getByLabelText('Existing production'),identifier);
+  expect(screen.getByRole('alert')).toHaveTextContent('RESOURCE_EXHAUSTED');
+  expect(screen.getByRole('alert')).toHaveTextContent('model rate limits');
+  await user.click(screen.getByRole('button',{name:'Retrieve existing interactions & refresh'}));
+  await waitFor(()=>expect(request.mock.calls.some(([path])=>path.endsWith('/refresh'))).toBe(true));
+  expect(paid(request)).toHaveLength(0);
+  expect(request.mock.calls.some(([path])=>path.endsWith('/review') || path.includes('publish'))).toBe(false);
 });
