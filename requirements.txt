@@ -3,6 +3,7 @@ altair==6.3.0
 annotated-doc==0.0.5
 annotated-types==0.8.0
 anyio==4.16.0
+APScheduler==3.11.3
 attrs==26.1.0
 certifi==2026.10.23
 cffi==2.1.1
@@ -123,6 +124,7 @@ typer==0.27.3
 typing-inspection==0.4.4
 typing_extensions==4.16.0
 tzdata==2026.6
+tzlocal==5.4.5
 uritemplate==4.2.0
 urllib3==2.8.0
 uuid_utils==0.19.0

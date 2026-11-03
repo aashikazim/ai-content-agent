@@ -142,3 +142,33 @@ class JobService:
                 )
 
         return self.get_job(job_id)
+    
+
+    def list_jobs(self, status=None, limit=100):
+        """
+        Return recent jobs, optionally filtered by status.
+        """
+        if limit < 1 or limit > 1000:
+            raise ValueError(
+                "limit must be between 1 and 1000"
+            )
+
+        with self.connect() as conn:
+            if status:
+                rows = conn.execute("""
+                    SELECT *
+                    FROM jobs
+                    WHERE status = ?
+                    ORDER BY created_at DESC
+                    LIMIT ?
+                """, (status, limit)).fetchall()
+            else:
+                rows = conn.execute("""
+                    SELECT *
+                    FROM jobs
+                    ORDER BY created_at DESC
+                    LIMIT ?
+                """, (limit,)).fetchall()
+
+        return [dict(row) for row in rows]
+
