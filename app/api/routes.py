@@ -3,6 +3,8 @@ import os
 from pathlib import Path
 from typing import Literal
 
+import secrets
+
 from fastapi import (
     APIRouter,
     BackgroundTasks,
@@ -287,3 +289,57 @@ def get_publication(publication_id: str):
         )
 
     return publication
+
+
+
+
+
+
+def require_review_key(
+    x_review_key: str | None = Header(
+        default=None
+    )
+):
+    expected = os.getenv(
+        "CONTENT_REVIEW_API_KEY"
+    )
+
+    if not expected:
+        raise HTTPException(
+            status_code=503,
+            detail="Review API key not configured"
+        )
+
+    if not x_review_key or not secrets.compare_digest(
+        x_review_key,
+        expected
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="Review permission required"
+        )
+
+
+def require_publish_key(
+    x_publish_key: str | None = Header(
+        default=None
+    )
+):
+    expected = os.getenv(
+        "CONTENT_PUBLISH_API_KEY"
+    )
+
+    if not expected:
+        raise HTTPException(
+            status_code=503,
+            detail="Publishing API key not configured"
+        )
+
+    if not x_publish_key or not secrets.compare_digest(
+        x_publish_key,
+        expected
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="Publishing permission required"
+        )

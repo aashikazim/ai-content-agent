@@ -146,3 +146,75 @@ class YouTubePublisher:
             ),
             "status": "uploaded"
         }
+    
+    def get_video_status(self, video_id):
+        response = (
+            self.get_client()
+            .videos()
+            .list(
+                part="status,processingDetails",
+                id=video_id
+            )
+            .execute()
+        )
+
+        items = response.get("items", [])
+
+        if not items:
+            return {
+                "status": "unknown",
+                "external_status": "not_accessible"
+            }
+
+        video = items[0]
+
+        privacy = video.get(
+            "status", {}
+        ).get("privacyStatus")
+
+        upload_status = video.get(
+            "status", {}
+        ).get("uploadStatus")
+
+        processing = video.get(
+            "processingDetails", {}
+        ).get("processingStatus")
+
+        if upload_status in {
+            "failed", "rejected", "deleted"
+        }:
+            internal_status = "failed"
+
+        elif processing in {
+            "processing", "pending"
+        }:
+            internal_status = "processing"
+
+        elif processing == "failed":
+            internal_status = "failed"
+
+        elif (
+            upload_status == "processed"
+            and processing in {
+                "succeeded", "terminated"
+            }
+        ):
+            if privacy == "public":
+                internal_status = "published"
+            elif privacy == "private":
+                internal_status = "private"
+            else:
+                internal_status = "uploaded"
+
+        else:
+            internal_status = "processing"
+
+        return {
+            "status": internal_status,
+            "external_status": (
+                f"upload={upload_status};"
+                f"processing={processing};"
+                f"privacy={privacy}"
+            )
+        }
+

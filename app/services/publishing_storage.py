@@ -34,6 +34,39 @@ class PublishingStorage:
                 )
             """)
 
+            # Day 6: Migrate existing publications table
+            columns = {
+                row[1]
+                for row in conn.execute(
+                    "PRAGMA table_info(publications)"
+                )
+            }
+
+            new_columns = {
+                "attempt_started_at": "TEXT",
+                "external_status": "TEXT",
+                "last_checked_at": "TEXT",
+            }
+
+            for column, column_type in new_columns.items():
+                if column not in columns:
+                    conn.execute(
+                        f"ALTER TABLE publications "
+                        f"ADD COLUMN {column} {column_type}"
+                    )
+
+            # Day 6: Publication event history
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS publication_events (
+                    event_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    publication_id TEXT NOT NULL,
+                    event_type TEXT NOT NULL,
+                    details TEXT,
+                    created_at TEXT NOT NULL
+                )
+            """)
+
+
     def get_by_job(self, job_id, platform):
         with self.connect() as conn:
             row = conn.execute("""
@@ -106,3 +139,99 @@ class PublishingStorage:
             """, (publication_id,)).fetchone()
 
         return dict(row) if row else None
+
+
+
+
+    def record_event(
+        self,
+        publication_id,
+        event_type,
+        details=None
+    ):
+        from datetime import datetime, timezone
+
+        now = datetime.now(
+            timezone.utc
+        ).isoformat()
+
+        with self.connect() as conn:
+            conn.execute("""
+                INSERT INTO publication_events (
+                    publication_id,
+                    event_type,
+                    details,
+                    created_at
+                )
+                VALUES (?, ?, ?, ?)
+            """, (
+                publication_id,
+                event_type,
+                details,
+                now
+            ))
+
+    def list_publications(self, statuses=None):
+        with self.connect() as conn:
+            if statuses:
+                placeholders = ",".join(
+                    "?" for _ in statuses
+                )
+
+                rows = conn.execute(
+                    f"""
+                    SELECT * FROM publications
+                    WHERE status IN ({placeholders})
+                    ORDER BY created_at DESC
+                    """,
+                    tuple(statuses)
+                ).fetchall()
+            else:
+                rows = conn.execute("""
+                    SELECT * FROM publications
+                    ORDER BY created_at DESC
+                """).fetchall()
+
+        return [dict(row) for row in rows]
+
+    def reserve_publication(
+        self,
+        job_id,
+        platform
+    ):
+        """
+        Atomically reserve one publication attempt.
+
+        A duplicate reservation raises an SQLite
+        integrity error. No second upload is started.
+        """
+        from datetime import datetime, timezone
+        import uuid
+
+        publication_id = str(uuid.uuid4())
+        now = datetime.now(
+            timezone.utc
+        ).isoformat()
+
+        with self.connect() as conn:
+            conn.execute("""
+                INSERT INTO publications (
+                    publication_id,
+                    job_id,
+                    platform,
+                    status,
+                    created_at,
+                    updated_at,
+                    attempt_started_at
+                )
+                VALUES (?, ?, ?, 'pending', ?, ?, ?)
+            """, (
+                publication_id,
+                job_id,
+                platform,
+                now,
+                now,
+                now
+            ))
+
+        return publication_id
