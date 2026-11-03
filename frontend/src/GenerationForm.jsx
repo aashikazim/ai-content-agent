@@ -195,7 +195,7 @@ export default function GenerationForm({ request, onCreated }) {
             <Section number="01" title="What are we creating?" description="Choose a format. Short-form scripts are available in the workshop; video support is shown below.">
               <div className="generation-types" role="radiogroup" aria-label="Content type">
                 {catalog.content_types.map(type => <label key={type.id} className={`generation-type ${configuration.content_type === type.id ? 'selected' : ''}`}>
-                  <input type="radio" name="content-type" value={type.id} checked={configuration.content_type === type.id} onChange={() => change({ content_type: type.id })} />
+                  <input type="radio" name="content-type" value={type.id} checked={configuration.content_type === type.id} onChange={() => change({ content_type: type.id, ...(type.id === 'long_drama' ? {duration_seconds:Math.max(120,configuration.duration_seconds === 45 ? 300 : configuration.duration_seconds),max_shots:Math.max(60,configuration.max_shots)} : {duration_seconds:Math.min(60,configuration.duration_seconds),max_shots:Math.min(12,configuration.max_shots)}) })} />
                   <span><strong>{type.label}</strong><small>{type.executable ? 'Available locally' : type.cloud_executable ? 'cloud video · manual quality checks' : `Planned${type.phase ? ` · Phase ${type.phase}` : ''}`}</small></span><span className="generation-radio" aria-hidden="true" />
                 </label>)}
               </div>
@@ -231,12 +231,12 @@ export default function GenerationForm({ request, onCreated }) {
 
             <Section number="03" title="Set the frame" description="These settings travel with the job and remain available for review.">
               <div className="generation-grid generation-grid-three">
-                <Field name="duration" label="Duration (seconds)" hint="Local generation: 30–60 seconds."><input id="create-duration" type="number" min="30" max="1200" value={configuration.duration_seconds} onChange={event => change({ duration_seconds: Number(event.target.value) })} required /></Field>
+                <Field name="duration" label="Duration (seconds)" hint="Short form: 30–60 seconds. Runway long drama: 120–1200 seconds."><input id="create-duration" type="number" min="30" max="1200" value={configuration.duration_seconds} onChange={event => change({ duration_seconds: Number(event.target.value) })} required /></Field>
                 <Field name="aspect" label="Aspect ratio" hint={videoModel?.aspect_ratios && !videoModel.aspect_ratios.includes(configuration.aspect_ratio) ? 'This model does not support the selected aspect ratio. Choose a native ratio before saving.' : undefined}><select id="create-aspect" value={configuration.aspect_ratio} onChange={event => change({ aspect_ratio: event.target.value })}>{catalog.aspect_ratios.map(item => <option key={item} value={item} disabled={videoModel?.aspect_ratios && !videoModel.aspect_ratios.includes(item)}>{item}{item === '9:16' ? ' · portrait' : item === '16:9' ? ' · landscape' : ' · square'}</option>)}</select></Field>
                 <Field name="style" label="Visual style"><select id="create-style" value={configuration.visual_style} onChange={event => change({ visual_style: event.target.value })}>{catalog.styles.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</select></Field>
                 <Field name="resolution" label="Resolution"><select id="create-resolution" value={configuration.resolution} onChange={event => change({ resolution: event.target.value })}>{catalog.resolutions.map(item => <option key={item} value={item}>{item}</option>)}</select></Field>
                 <Field name="fps" label="Frame rate"><select id="create-fps" value={configuration.fps} onChange={event => change({ fps: Number(event.target.value) })}>{catalog.fps.map(item => <option key={item} value={item} disabled={videoModel?.fps && !videoModel.fps.includes(item)}>{item} fps</option>)}</select></Field>
-                <Field name="shots" label="Maximum scenes"><input id="create-shots" type="number" min="1" max="12" value={configuration.max_shots} onChange={event => change({ max_shots: Number(event.target.value) })} required /></Field>
+                <Field name="shots" label="Maximum scenes"><input id="create-shots" type="number" min="1" max={configuration.content_type === 'long_drama' ? 240 : 12} value={configuration.max_shots} onChange={event => change({ max_shots: Number(event.target.value) })} required /></Field>
                 <Field name="narration" label="Narration"><select id="create-narration" value={configuration.narration} onChange={event => change({ narration: event.target.value })}><option value="local_tts">Local TTS · current baseline</option><option value="model_audio">Selected model audio</option></select></Field>
                 <Field name="captions" label="Captions"><select id="create-captions" value={configuration.captions} onChange={event => change({ captions: event.target.value })}><option value="scene_text">Scene text · current baseline</option><option value="timed">Timed phrases · cloud assembly</option></select></Field>
                 <Field name="budget" label="Maximum budget (USD)" hint="Quotes reserve estimated script and clip costs against this limit. Provider billing remains authoritative."><input id="create-budget" type="number" min="0" max="1000" step="0.01" value={configuration.max_cost_usd} onChange={event => change({ max_cost_usd: event.target.value })} required /></Field>
@@ -269,6 +269,6 @@ export default function GenerationForm({ request, onCreated }) {
       </div>
     </form>
     {catalog.phase >= 2 && <ScriptWorkshop request={request} configuration={configuration} category={category} region={region} limit={limit} />}
-    {catalog.phase >= 3 && <CloudProduction request={request} />}
+    {catalog.phase >= 3 && <CloudProduction editModels={catalog.runway_edit_models || []} request={request} />}
   </div>;
 }

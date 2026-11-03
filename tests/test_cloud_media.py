@@ -72,3 +72,49 @@ def test_caption_text_cannot_inject_ass_overrides(tmp_path):
     segments=write_captions(path,r'hello {\pos(0,0)} world',8,720,1280,True)
     assert segments[0][0]==0 and segments[-1][1]==8
     assert '{' not in path.read_text() and '\\pos' not in path.read_text()
+
+
+def test_real_two_minute_drama_assembly_and_manifest(tmp_path):
+    from tests.test_long_drama import long_production,long_config
+    production=long_production()
+    config=long_config().model_copy(update={'resolution':'720p','fps':24})
+    production.validate_configuration(config)
+    clip=tmp_path/'source.mp4';fixture_video(clip,8)
+    selected={shot.shot_number:{'clip_path':str(clip),'trim_start_seconds':0,'model':config.video_model} for shot in production.shots}
+    output,quality=CloudVideoRenderer(config).assemble(production,selected,tmp_path/'long')
+    assert quality['technical_passed'] and quality['has_audio']
+    assert abs(quality['duration_seconds']-120)<.3
+    assert (quality['width'],quality['height'])==(720,1280)
+    manifest=json.loads((output.parent/'manifest.json').read_text())
+    assert len(manifest['scenes'])==15 and manifest['review_status']=='draft'
+    assert (output.parent/'captions_15.ass').is_file()
+
+
+def test_real_visual_edit_preserves_source_audio_and_original_bytes(tmp_path):
+    import hashlib
+    from app.services.runway_media import finish_candidate,normalize
+    parent=tmp_path/'parent.mp4';fixture_video(parent,8)
+    downloaded=tmp_path/'provider.mp4';fixture_video(downloaded,5,audio=False)
+    before=hashlib.sha256(parent.read_bytes()).hexdigest()
+    config=GenerationConfig(video_provider='runway',video_model='kling3.0_standard',resolution='720p',fps=24,narration='model_audio')
+    request={'operation':'edit','target_duration':5,'source':{'trim_start_seconds':1}}
+    source=normalize(parent,tmp_path/'source_window.mp4',config,start=1,duration=5)
+    assert validate_clip(source,5,require_audio=True)['technical_passed']
+    output=finish_candidate(downloaded,tmp_path/'edited.mp4',parent,request,config)
+    assert validate_clip(output,5,require_audio=True)['technical_passed']
+    assert hashlib.sha256(parent.read_bytes()).hexdigest()==before
+
+
+def test_real_final_frame_continuation_is_joined_and_decodable(tmp_path):
+    import hashlib
+    from app.services.runway_media import finish_candidate,last_frame
+    parent=tmp_path/'parent.mp4';fixture_video(parent,5)
+    tail=tmp_path/'provider.mp4';fixture_video(tail,3)
+    before=hashlib.sha256(parent.read_bytes()).hexdigest()
+    image=last_frame(parent,tmp_path/'frame.png',5)
+    assert image.startswith(b'\x89PNG')
+    config=GenerationConfig(video_provider='runway',video_model='kling3.0_standard',resolution='720p',fps=24,narration='model_audio')
+    request={'operation':'extend','target_duration':8,'generation_duration':3,'source':{'duration_seconds':5}}
+    output=finish_candidate(tail,tmp_path/'extended.mp4',parent,request,config)
+    assert validate_clip(output,8,require_audio=True)['technical_passed']
+    assert hashlib.sha256(parent.read_bytes()).hexdigest()==before

@@ -6,7 +6,7 @@ import streamlit as st
 from app.services.streamlit_admin_service import ContentAPIError
 
 
-def cloud_production(api):
+def cloud_production(api, catalog=None):
     st.divider()
     st.header('Cloud video production')
     st.caption('Reuse a completed shot plan, explicitly authorize moving clips, assemble locally, then inspect quality before manual review. No automatic local fallback. Runway-hosted Kling models use the Runway key; direct Kling is retired.')
@@ -71,6 +71,7 @@ def cloud_production(api):
         except ContentAPIError as error: st.error(str(error))
     if quote := st.session_state.get('cloud_quote'):
         st.info(f"Estimated request cost: ${quote['estimate_usd']}; {quote['shot_count']} shot(s). Projected production estimate: ${quote['projected_estimate_usd']}.")
+        st.write(f"Model: {quote.get('model','saved model')}")
         st.write(quote['notice'])
         st.write(quote.get('request_summary',{}))
         provider_name = quote.get('provider_label', provider_name)
@@ -127,7 +128,11 @@ def cloud_production(api):
         if st.button('Discard never-submitted shots'):
             try: api.cloud(f'videos/{current_id}/discard-queued',{'confirmed':True}); st.rerun()
             except ContentAPIError as error: st.error(str(error))
-    for shot in value['shots']:
+    visible_shots = value['shots']
+    if len(value['production_plan']['content_plan']['scenes']) > 12:
+        scene = st.selectbox('Scene to inspect', [None,*[item['scene_number'] for item in value['production_plan']['content_plan']['scenes']]],format_func=lambda number:'All scenes' if number is None else f'Scene {number}',key='cloud_scene_' + current_id)
+        visible_shots = [item for item in visible_shots if scene is None or item['scene_number']==scene]
+    for shot in visible_shots:
         attempt_id = shot['attempt_id']
         with st.expander(f"Shot {shot['shot_number']} · v{shot['version']} · {shot['status']}" + (' · selected' if shot['selected'] else '')):
             st.write(f"Estimated request cost: ${shot['estimate_usd']}. Calculated token cost: {shot.get('calculated_cost_usd') or 'unavailable'}. Actual bill is not reported.")
@@ -136,18 +141,25 @@ def cloud_production(api):
                 try: st.video(api.media_bytes(shot['video_url'].removeprefix('/api/v1')))
                 except ContentAPIError as error: st.error(str(error))
             if shot['status'] == 'completed':
-                trim = st.number_input('Trim start (seconds)', min_value=0.0,max_value=40.0,step=.1,value=float(shot.get('trim_start_seconds',0)),key='cloud_trim_' + attempt_id)
+                trim = st.number_input('Trim start (seconds)', min_value=0.0,max_value=120.0,step=.1,value=float(shot.get('trim_start_seconds',0)),key='cloud_trim_' + attempt_id)
                 if st.button('Use this shot and assemble', key='cloud_select_' + attempt_id):
                     try: api.cloud(f'videos/{current_id}/select',{'attempt_id':attempt_id,'trim_start_seconds':trim}); st.rerun()
                     except ContentAPIError as error: st.error(str(error))
             if shot['status'] in {'completed','failed','validation_failed'}:
-                operation = st.selectbox('Shot operation', ['generate','edit','extend'] if shot['status'] == 'completed' and value.get('configuration', {}).get('video_provider') != 'runway' else ['generate'],key='cloud_operation_' + attempt_id)
-                instructions = st.text_area('Shot change instructions',max_chars=2000,key='cloud_instructions_' + attempt_id)
+                operation = st.selectbox('Shot operation', ['generate','edit','extend'] if shot['status'] == 'completed' else ['generate'],key='cloud_operation_' + attempt_id)
+                edit_model = None
+                if operation == 'edit' and value.get('configuration',{}).get('video_provider') == 'runway':
+                    models = {item['id']:item['label'] for item in (catalog or {}).get('runway_edit_models',[])} or {'aleph2':'Aleph 2'}
+                    edit_model = st.selectbox('Runway edit model',list(models),format_func=lambda key:models[key],key='cloud_edit_model_' + attempt_id)
+                    st.caption('Visual edit of the planned window; original audio retained. O3 accepts up to10s, Aleph2/Kling4 up to30s.')
+                if operation == 'extend' and value.get('configuration',{}).get('video_provider') == 'runway':
+                    st.caption('Generate only added seconds from the parent final frame and join locally; inspect the candidate and select a trim window. The screenplay duration stays fixed.')
+                instructions = st.text_area('Shot change instructions' ,max_chars=2000,key='cloud_instructions_' + attempt_id)
                 extension = st.number_input('Extension seconds',min_value=3,max_value=10,value=3,key='cloud_extension_' + attempt_id) if operation == 'extend' else 3
                 st.caption('Extended candidates preserve the parent. Inspect output and select a trim window that fits the existing planned shot; no automatic timeline extension.')
                 if st.button('Estimate this shot change',key='cloud_quote_' + attempt_id,disabled=uncertain):
                     try:
-                        quote = api.cloud(f'videos/{current_id}/shot-quotes',{'shot_number':shot['shot_number'],'parent_attempt_id':attempt_id,'operation':operation,'instructions':instructions,'extension_seconds':extension})
+                        quote = api.cloud(f'videos/{current_id}/shot-quotes',{'shot_number':shot['shot_number'],'parent_attempt_id':attempt_id,'operation':operation,'instructions':instructions,'extension_seconds':extension,**({'edit_model':edit_model} if edit_model else {})})
                         st.session_state['cloud_quote'] = {**quote,'kind':'change','production_id':current_id}; st.rerun()
                     except ContentAPIError as error: st.error(str(error))
             if shot['status'] in {'needs_reconciliation','download_failed'}:

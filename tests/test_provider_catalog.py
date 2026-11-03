@@ -25,7 +25,8 @@ def test_catalog_does_not_claim_model_or_account_access(monkeypatch):
     types = {item["id"]: item for item in catalog["content_types"]}
     assert types["short_drama"]["phase"] == 4
     assert types["news"]["phase"] == 6
-    assert types["long_drama"]["phase"] is None
+    assert types["long_drama"]["phase"] == 7
+    assert types['long_drama']['cloud_executable'] is True
 
 
 def test_catalog_exposes_only_credential_presence(monkeypatch):

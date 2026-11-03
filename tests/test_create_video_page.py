@@ -435,3 +435,20 @@ def test_runway_controls_and_consent_are_independent_of_script_provider(api_sess
     assert any(element.value == 'Authorize Runway video cost' for element in app.subheader)
     assert not job_calls(api_session)
     assert not [call for call in api_session.calls if call[:2] == ('POST','/generation/videos')]
+
+
+def test_streamlit_long_drama_allows_long_duration_and_larger_shot_plan(api_session,monkeypatch):
+    monkeypatch.setenv('RUNWAYML_API_SECRET',CLOUD_SECRET)
+    app=page()
+    app.selectbox(key='cv_content_type').select('long_drama').run()
+    app.selectbox(key='cv_video_provider').select('runway').run()
+    app.selectbox(key='cv_video_model_runway').select('kling3.0_standard').run()
+    app.number_input(key='cv_duration_seconds').set_value(120).run()
+    app.number_input(key='cv_max_shots').set_value(30).run()
+    assert not app.exception
+    button(app,'Save settings').click().run()
+    assert not app.exception
+    config=api_session.drafts[-1]['config']
+    assert config['content_type']=='long_drama' and config['duration_seconds']==120 and config['max_shots']==30
+    assert button(app,'Start local generation').disabled
+    assert not job_calls(api_session)

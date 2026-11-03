@@ -30,6 +30,25 @@ MODELS = {
     'kling_4': model('Kling 4', 3, 30, '15.7', '15.7', native='selected', references=True, always_audio=True),
 }
 
+EDIT_MODELS = {
+    'aleph2': {'label':'Aleph 2', 'min_seconds':2, 'max_seconds':30, 'credits_per_second':28},
+    'klingO3_standard': {'label':'Kling O3 Standard', 'min_seconds':3, 'max_seconds':10, 'credits_per_second':13},
+    'klingO3_pro': {'label':'Kling O3 Pro', 'min_seconds':3, 'max_seconds':10, 'credits_per_second':17},
+    'klingO3_4k': {'label':'Kling O3 4K', 'min_seconds':3, 'max_seconds':10, 'credits_per_second':43},
+    'kling_4': {'label':'Kling 4', 'min_seconds':3, 'max_seconds':30, 'credits_per_second':None},
+}
+
+
+def operation_estimate(config, operation, duration, edit_model=None):
+    if operation == 'edit':
+        info = EDIT_MODELS.get(edit_model)
+        if not info or not info['min_seconds'] <= duration <= info['max_seconds']:
+            raise ValueError('Choose a supported edit model for this source-window duration')
+        # Kling 4 bills output + max(input, output); an edit preserves duration.
+        rate = info['credits_per_second'] or ('28.2' if config.resolution == '1080p' else '18.8')
+        return (Decimal(str(rate)) * Decimal(str(duration))).to_integral_value(rounding=ROUND_CEILING) * Decimal('.01')
+    return estimate(config.model_copy(update={'video_input_mode':'image'}) if operation == 'extend' else config, duration)
+
 
 def capabilities(config):
     try:
@@ -86,6 +105,7 @@ def catalog_models():
     return [dict(info, id=key, implemented=True, status='account_access_unverified',
                  account_access='unverified', verified_on='2026-11-03', source_url=SOURCE,
                  aspect_ratios=['9:16', '16:9', '1:1'], resolutions=['720p', '1080p'],
-                 fps=[24, 30], normalizes_fps=True, operations=['generate'],
+                 fps=[24, 30], normalizes_fps=True, operations=['generate', 'edit', 'extend'],
+                 edit_requires_model_selection=True, extension_mode='final_frame_continuation',
                  resolution_note='Local FFmpeg normalizes output; 720p models are upscaled for 1080p. 4K models incur 4K cost even for smaller final output.')
             for key, info in MODELS.items()]

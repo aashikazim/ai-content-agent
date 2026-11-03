@@ -203,9 +203,10 @@ class StreamlitAdminClient:
                 if response.status_code != 200:
                     raise ContentAPIError('Media is not available; refresh production history or sign in again')
                 data = bytearray()
+                maximum = 1024 * 1024 * 1024 if path.startswith('/jobs/') else 100 * 1024 * 1024
                 for chunk in response.iter_content(65536):
                     data.extend(chunk)
-                    if len(data) > 100 * 1024 * 1024:
+                    if len(data) > maximum:
                         raise ContentAPIError('Media exceeds the dashboard preview limit')
                 return bytes(data)
         except requests.RequestException:

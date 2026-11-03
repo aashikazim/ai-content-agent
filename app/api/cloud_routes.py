@@ -33,7 +33,7 @@ class QuoteRequest(BaseModel):
     script_attempt_id: UUID
     reference_ids: list[UUID] | None = Field(default=None, max_length=3)
     start_image_reference_id: UUID | None = None
-    shot_image_reference_ids: dict[int, UUID] | None = Field(default=None, max_length=12)
+    shot_image_reference_ids: dict[int, UUID] | None = Field(default=None, max_length=240)
 
 
 class PaidSubmission(BaseModel):
@@ -122,17 +122,18 @@ def shot_video(production_id: UUID, attempt_id: UUID):
 
 class ShotQuote(BaseModel):
     model_config = ConfigDict(extra='forbid')
-    shot_number: int = Field(ge=1, le=12, strict=True)
+    shot_number: int = Field(ge=1, le=240, strict=True)
     operation: str = Field(pattern=r'^(generate|edit|extend)$')
     instructions: str = Field(default='', max_length=2000)
     parent_attempt_id: UUID | None = None
     extension_seconds: int = Field(default=3, ge=3, le=10, strict=True)
+    edit_model: str | None = Field(default=None, max_length=100)
 
 
 class ShotSelection(BaseModel):
     model_config = ConfigDict(extra='forbid')
     attempt_id: UUID
-    trim_start_seconds: float = Field(default=0, ge=0, le=40, allow_inf_nan=False)
+    trim_start_seconds: float = Field(default=0, ge=0, le=120, allow_inf_nan=False)
 
 
 class Reconciliation(BaseModel):
@@ -160,7 +161,7 @@ def shot_quote(production_id: UUID, body: ShotQuote, principal=Depends(require_s
     return invoke(lambda: service().quote_change(str(production_id), principal['username'], body.shot_number,
         operation=body.operation, instructions=body.instructions,
         parent_attempt_id=str(body.parent_attempt_id) if body.parent_attempt_id else None,
-        extension_seconds=body.extension_seconds))
+        extension_seconds=body.extension_seconds, edit_model=body.edit_model))
 
 
 @router.post('/videos/{production_id}/shots', status_code=202)

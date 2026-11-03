@@ -5,6 +5,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.models.content_plan import ContentPlan
+from app.models.long_content_plan import LongContentPlan
 from app.services.narration_service import NarrationService
 
 
@@ -18,15 +19,15 @@ class CharacterProfile(BaseModel):
 
 class DialogueLine(BaseModel):
     model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
-    scene_number: int = Field(ge=1, le=12)
+    scene_number: int = Field(ge=1, le=240)
     character_id: str = Field(min_length=1, max_length=32)
     text: str = Field(min_length=1, max_length=1000)
 
 
 class PlannedShot(BaseModel):
     model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
-    shot_number: int = Field(ge=1, le=12)
-    scene_number: int = Field(ge=1, le=12)
+    shot_number: int = Field(ge=1, le=240)
+    scene_number: int = Field(ge=1, le=240)
     duration_seconds: int = Field(ge=2, le=30, strict=True)
     action: str = Field(min_length=1, max_length=1500)
     camera: str = Field(min_length=1, max_length=500)
@@ -37,24 +38,29 @@ class PlannedShot(BaseModel):
 class ProductionPlan(BaseModel):
     model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
     schema_version: Literal[1] = 1
-    content_type: Literal["realistic_short", "short_drama", "animated_comedy", "news"]
+    content_type: Literal["realistic_short", "short_drama", "animated_comedy", "news", "long_drama"]
     factual_status: Literal["fiction", "satire", "unverified"] = "unverified"
-    outline: list[str] = Field(min_length=1, max_length=12)
+    outline: list[str] = Field(min_length=1, max_length=240)
     characters: list[CharacterProfile] = Field(default_factory=list, max_length=3)
-    dialogue: list[DialogueLine] = Field(default_factory=list, max_length=100)
-    shots: list[PlannedShot] = Field(default_factory=list, max_length=12)
-    content_plan: ContentPlan
+    dialogue: list[DialogueLine] = Field(default_factory=list, max_length=1200)
+    shots: list[PlannedShot] = Field(default_factory=list, max_length=240)
+    content_plan: ContentPlan | LongContentPlan
 
     @model_validator(mode="after")
     def validate_screenplay(self):
         if self.content_plan.review_status != "draft":
             raise ValueError("Generated scripts must remain drafts")
+        long = self.content_type == 'long_drama'
+        if long != isinstance(self.content_plan, LongContentPlan):
+            raise ValueError('Only long_drama may use a long-form content plan')
+        if not long and (len(self.shots) > 12 or len(self.outline) > 12 or len(self.dialogue) > 100):
+            raise ValueError('Short-form production limits exceeded')
         ids = [character.character_id for character in self.characters]
         if len(ids) != len(set(ids)):
             raise ValueError("Character IDs must be unique")
-        if self.content_type == "short_drama" and not 2 <= len(ids) <= 3:
+        if self.content_type in {"short_drama", "long_drama"} and not 2 <= len(ids) <= 3:
             raise ValueError("Short drama requires two or three fictional characters")
-        if self.content_type == "short_drama" and self.factual_status != "fiction":
+        if self.content_type in {"short_drama", "long_drama"} and self.factual_status != "fiction":
             raise ValueError("Drama must be labelled fiction")
         if self.content_type == "news" and self.factual_status != "unverified":
             raise ValueError("News drafts require research and cannot claim factual verification")
@@ -66,7 +72,7 @@ class ProductionPlan(BaseModel):
                 raise ValueError("Dialogue must reference an existing character and scene")
             if line.text.casefold() not in scenes[line.scene_number].narration.casefold():
                 raise ValueError("All dialogue must be included in its scene's spoken narration")
-        if self.content_type == "short_drama" and not self.dialogue:
+        if self.content_type in {"short_drama", "long_drama"} and not self.dialogue:
             raise ValueError("Short drama requires dialogue")
         if self.shots:
             if [shot.shot_number for shot in self.shots] != list(range(1, len(self.shots) + 1)):
@@ -130,7 +136,6 @@ def strict_production_schema():
                 close(child)
 
     close(schema)
-    schema["$defs"]["ContentPlan"]["properties"]["review_status"] = {
-        "type": "string", "const": "draft"
-    }
+    for name in ('ContentPlan', 'LongContentPlan'):
+        schema["$defs"][name]["properties"]["review_status"] = {"type": "string", "const": "draft"}
     return schema

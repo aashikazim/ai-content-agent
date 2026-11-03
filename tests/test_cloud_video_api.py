@@ -174,3 +174,61 @@ def test_runway_credit_lookup_is_read_only_and_private(generation_api, monkeypat
     lookup.assert_called_once()
     api.execute.assert_not_called()
     api.publisher.assert_not_called()
+
+
+def test_long_drama_quotes_generates_and_stops_at_separate_manual_review(cloud_api,monkeypatch):
+    from tests.test_long_drama import long_config,long_production
+    api=cloud_api
+    monkeypatch.setenv('RUNWAYML_API_SECRET','test-runway-key')
+    config=long_config()
+    scripts=ScriptGenerationService(api.db_path)
+    with scripts.storage.connect() as conn:
+        conn.execute('UPDATE script_generation_attempts SET request_json=?,result_json=? WHERE attempt_id=?',
+            (json.dumps(scripts.request(config)),long_production().model_dump_json(),api.script_id))
+    api.provider.check_model=Mock(return_value={'available_credits':100000})
+    response=api.client.post('/api/v1/generation/video-quotes',headers=api.headers,json={'script_attempt_id':api.script_id})
+    assert response.status_code==200,response.text
+    quote=response.json()
+    assert quote['shot_count']==15 and quote['model']=='kling3.0_standard'
+    response=api.client.post('/api/v1/generation/videos',headers=api.headers,json={'quote_id':quote['quote_id'],'confirmed':True})
+    assert response.status_code==202,response.text
+    identifier=response.json()['production_id']
+    api.cloud_service.process(identifier,submit_queued=True)
+    value=api.cloud_service.process(identifier)
+    assert value['status']=='technical_ready' and len(value['shots'])==15
+    assert api.cloud_service.jobs.get_job(value['job_id'])['status']=='awaiting_quality_review'
+    details=api.client.get(f"/api/v1/jobs/{value['job_id']}/details").json()
+    assert len(details['plan']['scenes'])==15
+    response=api.client.post(f'/api/v1/generation/videos/{identifier}/review',headers=api.headers,
+        json={'continuity_confirmed':True,'captions_confirmed':True,'rights_confirmed':True})
+    assert response.status_code==200,response.text
+    assert api.cloud_service.jobs.get_job(value['job_id'])['status']=='pending_review'
+    api.publisher.assert_not_called()
+
+
+def test_runway_edit_quote_respects_explicit_model_without_paid_submission(cloud_api,monkeypatch):
+    import hashlib
+    from pathlib import Path
+    api=cloud_api
+    monkeypatch.setenv('RUNWAYML_API_SECRET','fixture')
+    with api.cloud_service.storage.connect() as conn:
+        request=json.loads(conn.execute('SELECT request_json FROM script_generation_attempts').fetchone()[0])
+        request['configuration'].update(video_provider='runway',video_model='gen4.5')
+        conn.execute('UPDATE script_generation_attempts SET request_json=?',(json.dumps(request),))
+    api.provider.check_model=Mock(return_value={'available_credits':10000})
+    value=create(api)
+    api.cloud_service.process(value['production_id'],submit_queued=True)
+    value=api.cloud_service.process(value['production_id'])
+    parent=value['shots'][0]
+    row=api.cloud_service.storage.attempt(parent['attempt_id'])
+    with api.cloud_service.storage.connect() as conn:
+        conn.execute('UPDATE video_shots SET media_quality_json=? WHERE attempt_id=?',
+            (json.dumps({'sha256':hashlib.sha256(Path(row['clip_path']).read_bytes()).hexdigest()}),parent['attempt_id']))
+    posts=api.provider.posts
+    response=api.client.post(f"/api/v1/generation/videos/{value['production_id']}/shot-quotes",headers=api.headers,
+        json={'shot_number':1,'operation':'edit','instructions':'Change the lighting','edit_model':'klingO3_pro'})
+    assert response.status_code==200,response.text
+    assert response.json()['model']=='klingO3_pro'
+    assert response.json()['estimate_usd']=='1.36'
+    assert api.provider.posts==posts
+    api.publisher.assert_not_called()

@@ -183,9 +183,8 @@ def test_runway_quote_confirmation_ids_polling_and_regeneration(runway_service):
     assert fake.posts == posts and fake.gets == gets
     assert value['status'] == 'technical_ready'
     assert instance.jobs.get_job(value['job_id'])['status'] == 'awaiting_quality_review'
-    for operation in ['edit', 'extend']:
-        with pytest.raises(ValueError, match='regeneration only'):
-            instance.quote_change(value['production_id'], 'admin', 1, operation=operation)
+    with pytest.raises(ValueError, match='Describe the visual edit'):
+        instance.quote_change(value['production_id'], 'admin', 1, operation='edit')
     change_quote = instance.quote_change(value['production_id'], 'admin', 1, instructions='Sunlit waves')
     candidate = instance.change(change_quote['quote_id'], 'admin', True)
     assert instance.storage.attempt(candidate['attempt_id'])['estimate_usd'] == '0.96'

@@ -32,13 +32,13 @@ Rules:
 
 
 class LLMService:
-    def __init__(self, client=None, model=None):
+    def __init__(self, client=None, model=None, request_timeout=180):
         self.client = client or Client(
             host=os.getenv(
                 "OLLAMA_HOST",
                 "http://127.0.0.1:11434"
             ),
-            timeout=180
+            timeout=request_timeout
         )
 
         self.model = model or os.getenv(
@@ -70,13 +70,15 @@ class LLMService:
             response.message.content
         )
 
-    def generate_production_plan(self, prompt):
+    def generate_production_plan(self, prompt, *, configuration=None):
         from app.models.production_plan import ProductionPlan
+        long = configuration is not None and configuration.content_type == 'long_drama'
+        system = SYSTEM_PROMPT if not long else SYSTEM_PROMPT.replace('short-form video', 'fictional drama').replace('7. Create 30-60 seconds of content.', '7. Create the exact requested long-drama duration, with scenes at most 60 seconds and a consistent cast.')
         response = self.client.chat(
             model=self.model,
-            messages=[{"role": "system", "content": SYSTEM_PROMPT},
+            messages=[{"role": "system", "content": system},
                       {"role": "user", "content": prompt}],
             format=ProductionPlan.model_json_schema(),
-            options={"temperature": 0.5, "num_predict": 8000}, stream=False,
+            options={"temperature": 0.5, "num_predict": 64000 if long else 8000}, stream=False,
         )
         return ProductionPlan.model_validate_json(response.message.content)

@@ -30,7 +30,7 @@ class GenerationConfig(BaseModel):
     video_model: str = Field(default="local-pipeline", min_length=1, max_length=200)
     video_input_mode: Literal["text", "image"] = "text"
     start_image_reference_id: UUID | None = None
-    shot_image_reference_ids: dict[int, UUID] = Field(default_factory=dict, max_length=12)
+    shot_image_reference_ids: dict[int, UUID] = Field(default_factory=dict, max_length=240)
     image_mode: Literal["text", "diffusion"] = "text"
     image_model: str = Field(
         default_factory=lambda: os.getenv("IMAGE_MODEL_ID", DEFAULT_IMAGE_MODEL),
@@ -50,7 +50,7 @@ class GenerationConfig(BaseModel):
     supplied_script: str = Field(default="", max_length=20000)
     character_reference_ids: list[UUID] = Field(default_factory=list, max_length=3)
     captions: Literal["scene_text", "timed"] = "scene_text"
-    max_shots: int = Field(default=12, ge=1, le=12, strict=True)
+    max_shots: int = Field(default=12, ge=1, le=240, strict=True)
     max_cost_usd: Decimal = Field(default=Decimal("10"), ge=0, le=1000)
     require_motion: bool = Field(default=False, strict=True)
     paid_generation_confirmed: bool = Field(default=False, strict=True)
@@ -64,8 +64,11 @@ class GenerationConfig(BaseModel):
 
     @model_validator(mode="after")
     def validate_reference_ids(self):
-        if any(not 1 <= key <= 12 for key in self.shot_image_reference_ids):
-            raise ValueError("Shot image keys must be shot numbers 1–12")
+        limit = 240 if self.content_type == 'long_drama' else 12
+        if self.max_shots > limit or len(self.shot_image_reference_ids) > limit:
+            raise ValueError(f'This content type supports at most {limit} shots')
+        if any(not 1 <= key <= limit for key in self.shot_image_reference_ids):
+            raise ValueError(f"Shot image keys must be shot numbers 1–{limit}")
         if len(set(self.character_reference_ids)) != len(self.character_reference_ids):
             raise ValueError("Character reference IDs must be unique")
         return self

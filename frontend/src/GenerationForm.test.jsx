@@ -74,6 +74,19 @@ const posts = () => request.mock.calls.filter(([, options]) => options?.method =
 const jobs = () => posts().filter(([path]) => path === '/jobs');
 
 describe('Create video settings', () => {
+  it('supports a twenty-minute draft and 240 shots only in long-drama mode',async()=>{
+    const user=await open();
+    await user.click(screen.getByRole('radio',{name:/Long drama/}));
+    const duration=screen.getByLabelText('Duration (seconds)');
+    const shots=screen.getByLabelText('Maximum scenes');
+    expect(shots).toHaveAttribute('max','240');
+    await user.clear(duration);await user.type(duration,'1200');
+    await user.clear(shots);await user.type(shots,'240');
+    await user.click(screen.getByRole('button',{name:'Save settings'}));
+    await waitFor(()=>expect(saved).toHaveLength(1));
+    expect(saved[0].config).toMatchObject({content_type:'long_drama',duration_seconds:1200,max_shots:240});
+    expect(jobs()).toHaveLength(0);
+  });
   it('removes hidden source text when switching back to trends', async () => {
     const user = await open();
     await user.selectOptions(screen.getByLabelText('Story source'), 'topic');

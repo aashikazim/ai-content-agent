@@ -16,7 +16,7 @@ from app.models.generation_config import GenerationConfig
 from app.models.production_plan import ProductionPlan
 from app.services.character_reference_service import CharacterReferenceService
 from app.services.cloud_video_storage import CloudVideoStorage
-from app.services.cloud_video_renderer import CloudVideoRenderer, validate_clip, MediaValidationError
+from app.services.cloud_video_renderer import CloudVideoRenderer, validate_clip, MediaValidationError, media_sha256
 from app.services.content_storage import ContentStorage
 from app.services.gemini_video_service import (
     GeminiVideoService, VideoProviderError, LEGACY_FAILURE_MESSAGE, provider_failure_message,
@@ -26,6 +26,7 @@ from app.services.job_service import JobService
 from app.services.provider_catalog import validate_for_cloud_video
 from app.services.runway_video_service import RunwayVideoService
 from app.services import runway_models
+from app.services import runway_media
 
 _UNSET = object()
 
@@ -44,8 +45,8 @@ class CloudVideoService:
     def fingerprint(value):
         return hashlib.sha256(json.dumps(value, sort_keys=True).encode()).hexdigest()
 
-    def provider_for(self, config):
-        return self.provider if self.provider is not None else RunwayVideoService(config) if config.video_provider == 'runway' else GeminiVideoService()
+    def provider_for(self, config, model=None):
+        return self.provider if self.provider is not None else RunwayVideoService(config, model=model) if config.video_provider == 'runway' else GeminiVideoService()
 
     def all_references(self, config):
         ids = list(dict.fromkeys([*config.character_reference_ids,
@@ -76,7 +77,9 @@ class CloudVideoService:
         validate_for_cloud_video(config)
         refs = self.all_references(config)
         request['references'] = [{'reference_id': ref['reference_id'], 'sha256': ref['sha256']} for ref in refs]
-        estimate = sum((self.shot_estimate(duration, config) for duration in durations), Decimal(0))
+        runway = config.video_provider == 'runway'
+        estimate = sum((runway_models.operation_estimate(config, request['operation'], duration, request.get('provider_model'))
+                        if runway else self.shot_estimate(duration, config) for duration in durations), Decimal(0))
         with self.storage.connect() as conn:
             script_id = request.get('script_attempt_id')
             if not script_id:
@@ -91,8 +94,7 @@ class CloudVideoService:
                     "SELECT estimate_usd FROM video_shots WHERE production_id = ? AND status != 'cancelled'", (request['production_id'],))), Decimal(0))
         if prior + estimate > config.max_cost_usd:
             raise ValueError(f'Estimated production spend ${prior + estimate:.4f} exceeds the configured budget ${config.max_cost_usd}; no generation submitted')
-        account = self.provider_for(config).check_model() or {}
-        runway = config.video_provider == 'runway'
+        account = self.provider_for(config,request.get('provider_model')).check_model() or {}
         if runway and account.get('available_credits') is not None and Decimal(str(account['available_credits'])) < estimate * 100:
             raise ValueError('Insufficient Runway credits for this quoted batch; no generation submitted')
         identifier, now = str(uuid4()), int(time.time())
@@ -101,13 +103,13 @@ class CloudVideoService:
                 (identifier, actor, json.dumps(request), self.fingerprint(request), str(estimate), now + 600))
         return {'quote_id': identifier, 'estimate_usd': str(estimate), 'prior_reserved_estimate_usd': str(prior),
                 'projected_estimate_usd': str(prior + estimate), 'expires_at': now + 600,
-                'shot_count': len(durations), 'model': config.video_model, 'provider': config.video_provider,
+                'shot_count': len(durations), 'model': request.get('provider_model',config.video_model), 'provider': config.video_provider,
                 'provider_label': 'Runway' if runway else 'Gemini',
                 'estimated_credits': str(estimate * 100) if runway else None,
                 'available_credits': account.get('available_credits') if runway else None,
-                'native_resolution': runway_models.capabilities(config)['native_resolution'] if runway else '720p',
-                'notice': ('Runway standard/list-price estimate at $0.01 per credit; no promotional discount assumed. Balance is a snapshot, not a reservation. Selected images and prompts go to Runway and its selected model provider. Local FFmpeg normalizes resolution/FPS. Character/voice continuity needs human review. ' if runway else 'Google stores background interactions for up to 55 days. Selected images, script and prompts are sent to Google. Character and voice continuity are not guaranteed. Extension billing/output semantics need manual inspection. ') + 'Estimate only, not a guaranteed invoice cap. One paid request per listed shot; no automatic retries.',
-                'request_summary': {'operation': request['operation'], 'shot_number': request.get('shot_number'), 'instructions': request.get('instructions', ''), 'reference_count': len(refs), 'durations': durations},
+                'native_resolution': ((config.resolution if request.get('provider_model')=='aleph2' else runway_models.MODELS.get(request.get('provider_model',config.video_model),{}).get('native_resolution',config.resolution)) if runway else '720p'),
+                'notice': (('The quoted source window is uploaded for a visual edit; original speech is preserved locally. ' if request['operation']=='edit' else 'Continuation generates only the added seconds from the parent final frame, then joins locally. The screenplay duration stays fixed; select a trim window. ' if request['operation']=='extend' else '') if runway else '') + ('Runway standard/list-price estimate at $0.01 per credit; no promotional discount assumed. Balance is a snapshot, not a reservation. Authorized source media, selected images and prompts go to Runway and its selected model provider. Local FFmpeg normalizes resolution/FPS. Character/voice continuity needs human review. ' if runway else 'Google stores background interactions for up to 55 days. Selected images, script and prompts are sent to Google. Character and voice continuity are not guaranteed. Extension billing/output semantics need manual inspection. ') + 'Estimate only, not a guaranteed invoice cap. One paid request per listed shot; no automatic retries.',
+                'request_summary': {'operation': request['operation'], 'shot_number': request.get('shot_number'), 'instructions': request.get('instructions', ''), 'reference_count': len(refs), 'durations': durations, 'candidate_duration':request.get('target_duration'), 'source':request.get('source')},
                 'source_url': runway_models.SOURCE if runway else 'https://aistudio.google.com/docs/pricing#gemini-omni-1.1-flash'}
 
     def quote(self, script_attempt_id, actor, reference_ids=None, *, start_image_reference_id=_UNSET, shot_image_reference_ids=None):
@@ -167,6 +169,8 @@ class CloudVideoService:
         refs = self.all_references(config)
         if request['references'] != [{'reference_id': ref['reference_id'], 'sha256': ref['sha256']} for ref in refs]:
             raise ValueError('Reference assets changed; obtain a new quote')
+        if request.get('source'):
+            runway_media.source_file(self.storage,request['source'])
         if conn.execute("SELECT 1 FROM video_shots WHERE status IN ('submitting','processing') OR (status='queued' AND production_id != ?) LIMIT 1", (request.get('production_id', ''),)).fetchone():
             raise ValueError('A video batch is already active; inspect generation history before submitting another')
         if request.get('production_id'):
@@ -178,17 +182,18 @@ class CloudVideoService:
 
     @staticmethod
     def insert_shot(conn, production_id, shot, quote_id, operation='generate', version=1,
-                    parent=None, instructions='', target_duration=None, config=None):
+                    parent=None, instructions='', target_duration=None, config=None, metadata=None, estimate=None):
         identifier, now = str(uuid4()), int(time.time())
         duration = target_duration or shot.duration_seconds
-        request = {'shot': shot.model_dump(mode='json'), 'instructions': instructions,
+        request = {'shot': shot.model_dump(mode='json'), 'instructions': instructions, 'operation':operation,
                    'target_duration': duration, 'parent_attempt_id': parent}
+        request.update(metadata or {})
         conn.execute('''INSERT INTO video_shots
             (attempt_id,production_id,shot_number,scene_number,version,parent_attempt_id,operation,request_json,quote_id,
              status,estimate_usd,created_at,updated_at,provider,model) VALUES (?,?,?,?,?,?,?,?,?,'queued',?,?,?,?,?)''',
             (identifier, production_id, shot.shot_number, shot.scene_number, version, parent, operation,
-             json.dumps(request), str(quote_id), str(CloudVideoService.shot_estimate(duration, config)), now, now,
-             config.video_provider if config else 'google', config.video_model if config else 'gemini-omni-1.1-flash'))
+             json.dumps(request), str(quote_id), str(estimate if estimate is not None else CloudVideoService.shot_estimate(duration, config)), now, now,
+             config.video_provider if config else 'google', request.get('provider_model',config.video_model if config else 'gemini-omni-1.1-flash')))
         return identifier
 
     def create(self, quote_id, actor, confirmed):
@@ -237,11 +242,14 @@ class CloudVideoService:
         scene = production.content_plan.scenes[shot['scene_number'] - 1]
         characters = [character.model_dump() for character in production.characters if character.character_id in shot['character_ids']]
         if config.video_provider == 'runway':
-            return (f"{config.visual_style} moving scene, {request['target_duration']} seconds. "
-                    f"Action: {shot['action']} Camera: {shot['camera']} "
+            if request.get('operation') == 'edit':
+                return request['instructions'] + ' Apply visual changes to the source window, preserving timing and character continuity. Original audio will be retained locally; do not add titles or captions.'
+            return (f"{config.visual_style} moving scene, {request.get('generation_duration',request['target_duration'])} seconds. "
+                    + ('Continue motion naturally from the supplied final frame. Do not repeat prior dialogue; ambient audio only. ' if request.get('operation')=='extend' else '')
+                    + f"Action: {shot['action']} Camera: {shot['camera']} "
                     + (f"Characters: {json.dumps(characters, ensure_ascii=False)} " if characters else '')
                     + (' '.join(f"Reference {index + 1}: {ref['character_id']}, {ref['description']}; {ref['wardrobe']}." for index, ref in enumerate(refs)))
-                    + (f" Speak exactly: {shot['spoken_text']}" if config.narration == 'model_audio' else ' No speech; narration added locally.')
+                    + (f" Speak exactly: {shot['spoken_text']}" if config.narration == 'model_audio' and request.get('operation')!='extend' else ' No new speech; narration remains on the original timeline.')
                     + f" No titles or captions. Content label: {production.factual_status}. "
                     + request.get('instructions', ''))
         reference_text = '\n'.join(f'<IMAGE_REF_{index}> is {ref["character_id"]}: {ref["description"]}; clothing: {ref["wardrobe"]}; voice: {ref["voice_notes"]}.' for index, ref in enumerate(refs))
@@ -257,8 +265,9 @@ Requested change: {request.get('instructions', '')}
 Do not invent evidence or real-world verification; this is an AI-generated visual production.'''
 
     @staticmethod
-    def check_prompt(prompt, config):
-        limit = 1000 if config.video_model.startswith('gen4') else 26000 if config.video_model == 'kling_4' else 2500
+    def check_prompt(prompt, config, model=None):
+        model = model or config.video_model
+        limit = 1000 if model.startswith('gen4') or model == 'aleph2' else 26000 if model == 'kling_4' else 2500
         if len(prompt) > limit:
             raise ValueError(f'Runway shot prompt exceeds this model\'s {limit}-character limit; shorten action, character details or dialogue before authorizing cost')
 
@@ -310,10 +319,13 @@ Do not invent evidence or real-world verification; this is an AI-generated visua
         owner, now = str(uuid4()), int(time.time())
         with self.storage.connect() as conn:
             conn.execute('BEGIN IMMEDIATE')
+            configuration = conn.execute('SELECT configuration_json FROM video_productions WHERE production_id=?',(identifier,)).fetchone()
+            duration = json.loads(configuration[0]).get('duration_seconds',45) if configuration else 45
+            lease_seconds = max(1800,duration*8)
             existing = conn.execute('SELECT * FROM video_processing_leases WHERE production_id=?', (identifier,)).fetchone()
             if existing and existing['expires_at'] > now:
                 return self.storage.get(identifier)
-            conn.execute('INSERT OR REPLACE INTO video_processing_leases VALUES (?,?,?)', (identifier,owner,now + 1800))
+            conn.execute('INSERT OR REPLACE INTO video_processing_leases VALUES (?,?,?)', (identifier,owner,now + lease_seconds))
         try:
             return self._process(identifier, submit_queued=submit_queued, attempt_ids=attempt_ids)
         finally:
@@ -327,6 +339,7 @@ Do not invent evidence or real-world verification; this is an AI-generated visua
         config = GenerationConfig.model_validate(value['configuration'])
         production = ProductionPlan.model_validate(value['production_plan'])
         provider = self.provider_for(config)
+        providers = {config.video_model: provider}
         with self.storage.connect() as conn:
             # A process crash after crossing this boundary must never cause a POST.
             conn.execute("UPDATE video_shots SET status='needs_reconciliation',error='Submission was interrupted. Inspect provider usage; no retry will be sent.' WHERE production_id=? AND status='submitting' AND updated_at < ?", (identifier, int(time.time()) - 300))
@@ -337,23 +350,36 @@ Do not invent evidence or real-world verification; this is an AI-generated visua
             status = attempt['status']
             snapshot = None
             try:
+                if config.video_provider == 'runway':
+                    model = attempt['model'] or config.video_model
+                    if model not in providers:
+                        providers[model] = self.provider_for(config,model)
+                    provider = providers[model]
                 if status == 'queued' and submit_queued and (attempt_ids is None or attempt['attempt_id'] in attempt_ids):
                     refs = self.references.verified(config.character_reference_ids)
                     request = json.loads(attempt['request_json'])
                     parent = self.storage.attempt(attempt['parent_attempt_id']) if attempt['parent_attempt_id'] else None
+                    extra = {}
+                    if config.video_provider == 'runway':
+                        directory = self.root / identifier / attempt['attempt_id']
+                        image_id = config.shot_image_reference_ids.get(attempt['shot_number'], config.start_image_reference_id)
+                        extra = {'duration': request.get('generation_duration',request['target_duration']), 'start_image': Path(self.references.verified([image_id])[0]['image_path']).read_bytes() if image_id and attempt['operation']=='generate' else None}
+                        if request.get('source'):
+                            source = runway_media.source_file(self.storage,request['source'])
+                            if attempt['operation']=='edit':
+                                extra['source_video'] = runway_media.normalize(source,directory/'source.mp4',config,
+                                    start=request['source']['trim_start_seconds'],duration=request['target_duration'])
+                            elif attempt['operation']=='extend':
+                                extra['start_image'] = runway_media.last_frame(source,directory/'last_frame.png',request['source']['duration_seconds'])
                     with self.storage.connect() as conn:
                         conn.execute('BEGIN IMMEDIATE')
                         changed = conn.execute("UPDATE video_shots SET status='submitting',updated_at=? WHERE attempt_id=? AND status='queued'", (int(time.time()), attempt['attempt_id']))
                         if changed.rowcount != 1:
                             continue
                         self.storage.event(conn, identifier, 'submission_started', 'One authorized cloud request; no automatic retry', attempt['attempt_id'])
-                    extra = {}
-                    if config.video_provider == 'runway':
-                        image_id = config.shot_image_reference_ids.get(attempt['shot_number'], config.start_image_reference_id)
-                        extra = {'duration': request['target_duration'], 'start_image': Path(self.references.verified([image_id])[0]['image_path']).read_bytes() if image_id else None}
                     snapshot = provider.submit(self.prompt(production, config, request, refs), aspect_ratio=config.aspect_ratio,
-                        references=[Path(ref['image_path']).read_bytes() for ref in refs] if attempt['operation'] == 'generate' else (),
-                        previous_id=parent['interaction_id'] if parent and attempt['operation'] != 'generate' else None,
+                        references=[Path(ref['image_path']).read_bytes() for ref in refs] if attempt['operation'] == 'generate' or config.video_provider=='runway' and attempt['operation']=='edit' and attempt['model']!='aleph2' else (),
+                        previous_id=parent['interaction_id'] if parent and attempt['operation'] != 'generate' and config.video_provider!='runway' else None,
                         operation=attempt['operation'], **extra)
                 elif (status in {'processing', 'download_pending', 'needs_reconciliation', 'download_failed'}
                       or (status == 'failed' and attempt['error'] == LEGACY_FAILURE_MESSAGE)) and attempt['interaction_id']:
@@ -377,8 +403,15 @@ Do not invent evidence or real-world verification; this is an AI-generated visua
                     break
                 if status == 'download_pending':
                     path = self.root / identifier / (attempt['attempt_id'] + '.mp4')
-                    provider.download(snapshot, path)
                     request = json.loads(attempt['request_json'])
+                    if config.video_provider=='runway' and attempt['operation']!='generate':
+                        downloaded = self.root / identifier / attempt['attempt_id'] / 'provider.mp4'
+                        provider.download(snapshot,downloaded)
+                        validate_clip(downloaded,request['generation_duration'],require_audio=config.narration=='model_audio' and attempt['operation']=='extend')
+                        source = runway_media.source_file(self.storage,request['source'])
+                        runway_media.finish_candidate(downloaded,path,source,request,config)
+                    else:
+                        provider.download(snapshot,path)
                     quality = validate_clip(path, request['target_duration'], require_audio=config.narration == 'model_audio')
                     with self.storage.connect() as conn:
                         conn.execute('BEGIN IMMEDIATE')
@@ -421,7 +454,7 @@ Do not invent evidence or real-world verification; this is an AI-generated visua
             with self.storage.connect() as conn:
                 conn.execute('BEGIN IMMEDIATE')
                 row = conn.execute('SELECT status,updated_at FROM video_productions WHERE production_id=?', (identifier,)).fetchone()
-                if row['status'] == 'assembling' and row['updated_at'] > int(time.time()) - 1800:
+                if row['status'] == 'assembling' and row['updated_at'] > int(time.time()) - max(1800,config.duration_seconds*8):
                     return self.storage.get(identifier)
                 conn.execute("UPDATE video_productions SET status='assembling',updated_at=? WHERE production_id=?", (int(time.time()),identifier))
             try:
@@ -430,7 +463,7 @@ Do not invent evidence or real-world verification; this is an AI-generated visua
                 manifest_path = Path(path).parent / 'manifest.json'
                 if manifest_path.is_file():
                     manifest = json.loads(manifest_path.read_text())
-                    manifest['shots'] = [{key: item[key] for key in ('attempt_id','shot_number','version','interaction_id','trim_start_seconds')} for item in selected]
+                    manifest['shots'] = [{key: item[key] for key in ('attempt_id','shot_number','version','interaction_id','trim_start_seconds','provider','model','operation')} for item in selected]
                     manifest['character_references'] = [self.references.public(ref) for ref in self.references.verified(config.character_reference_ids)]
                     manifest['input_images'] = [self.references.public(ref) for ref in self.all_references(config)]
                     manifest_path.write_text(json.dumps(manifest, indent=2), encoding='utf-8')
@@ -471,11 +504,9 @@ Do not invent evidence or real-world verification; this is an AI-generated visua
                 raise ValueError('This job has a publication attempt; generation changes are locked')
         return value
 
-    def quote_change(self, identifier, actor, shot_number, *, operation='generate', instructions='', parent_attempt_id=None, extension_seconds=3):
+    def quote_change(self, identifier, actor, shot_number, *, operation='generate', instructions='', parent_attempt_id=None, extension_seconds=3, edit_model=None):
         value = self.editable(identifier)
         config = GenerationConfig.model_validate(value['configuration'])
-        if config.video_provider == 'runway' and operation != 'generate':
-            raise ValueError('Runway supports regeneration only; Gemini edit/extension controls are unavailable')
         if operation not in {'generate', 'edit', 'extend'} or len(instructions) > 2000:
             raise ValueError('Unsupported shot operation or instructions')
         production = ProductionPlan.model_validate(value['production_plan'])
@@ -488,7 +519,9 @@ Do not invent evidence or real-world verification; this is an AI-generated visua
             raise ValueError('Parent shot attempt not found')
         if any(item['status'] in {'needs_reconciliation','submitting','processing','queued'} for item in candidates):
             raise ValueError('Resolve active or uncertain attempts before authorizing a new shot request')
-        target = shot.duration_seconds
+        target = generation_duration = shot.duration_seconds
+        source = None
+        model = config.video_model
         if operation != 'generate':
             if parent['status'] != 'completed' or not parent['interaction_id']:
                 raise ValueError('Editing/extension requires a completed generated clip and its interaction ID')
@@ -496,17 +529,37 @@ Do not invent evidence or real-world verification; this is an AI-generated visua
             parent_duration = json.loads(original['request_json'])['target_duration']
             target = parent_duration
             if operation == 'extend':
-                if type(extension_seconds) is not int or not 3 <= extension_seconds <= 10 or target + extension_seconds > 40:
-                    raise ValueError('An extension adds 3–10 seconds, up to a 40-second generated candidate')
+                maximum = 120 if config.video_provider=='runway' else 40
+                if type(extension_seconds) is not int or not 3 <= extension_seconds <= 10 or target + extension_seconds > maximum:
+                    raise ValueError(f'An extension adds 3–10 seconds, up to a {maximum}-second generated candidate')
                 target += extension_seconds
-        config = GenerationConfig.model_validate(value['configuration'])
-        if config.video_provider == 'runway':
-            self.check_prompt(self.prompt(production, config, {'shot': shot.model_dump(), 'target_duration': target, 'instructions': instructions},
-                self.references.verified(config.character_reference_ids)), config)
-        request = {'operation': operation, 'production_id': identifier, 'shot_number': shot_number,
-            'configuration': config.model_dump(mode='json'), 'parent_attempt_id': parent['attempt_id'],
-            'target_duration': target, 'instructions': instructions}
-        return self.make_quote(request, actor, config, [target])
+            if config.video_provider=='runway':
+                if operation=='edit':
+                    if not instructions.strip():
+                        raise ValueError('Describe the visual edit before obtaining a paid quote')
+                    model = edit_model or 'aleph2'
+                    target = generation_duration = shot.duration_seconds
+                else:
+                    generation_duration = extension_seconds
+                quality = json.loads(original['media_quality_json'] or '{}')
+                if not quality.get('sha256'):
+                    raise ValueError('The source clip needs a validated content hash before editing/continuation')
+                source = {'attempt_id':original['attempt_id'],'sha256':quality['sha256'],
+                          'duration_seconds':parent_duration if operation=='extend' else target,
+                          'trim_start_seconds':original['trim_start_seconds'] if operation=='edit' else 0}
+                runway_media.source_file(self.storage,source)
+        if config.video_provider!='runway' and edit_model:
+            raise ValueError('An edit-model selection applies to Runway only')
+        request = {'operation':operation,'production_id':identifier,'shot_number':shot_number,
+            'configuration':config.model_dump(mode='json'),'parent_attempt_id':parent['attempt_id'],
+            'target_duration':target,'instructions':instructions}
+        if config.video_provider=='runway':
+            request.update(provider_model=model, generation_duration=generation_duration)
+            if source:
+                request['source'] = source
+            self.check_prompt(self.prompt(production,config,{'shot':shot.model_dump(),**request},
+                self.references.verified(config.character_reference_ids)),config,model)
+        return self.make_quote(request,actor,config,[generation_duration if config.video_provider=='runway' else target])
 
     def change(self, quote_id, actor, confirmed):
         with self.storage.connect() as conn:
@@ -523,7 +576,8 @@ Do not invent evidence or real-world verification; this is an AI-generated visua
             production = ProductionPlan.model_validate(value['production_plan'])
             shot = next(item for item in production.shots if item.shot_number == request['shot_number'])
             identifier = self.insert_shot(conn, value['production_id'], shot, quote_id, request['operation'],
-                max(item['version'] for item in candidates) + 1, parent['attempt_id'], request['instructions'], request['target_duration'], config=config)
+                max(item['version'] for item in candidates) + 1, parent['attempt_id'], request['instructions'], request['target_duration'], config=config,
+                metadata={key:request[key] for key in ('source','provider_model','generation_duration') if key in request}, estimate=quote['estimate_usd'])
             conn.execute("UPDATE video_productions SET status='processing',quality_json=NULL,error=NULL,updated_at=? WHERE production_id=?", (int(time.time()), value['production_id']))
             conn.execute("UPDATE jobs SET status='rendering',error=NULL WHERE job_id=?", (value['job_id'],))
             self.storage.event(conn, value['production_id'], 'shot_authorized', 'Human authorized one new candidate; original selected media preserved', identifier)
@@ -543,7 +597,7 @@ Do not invent evidence or real-world verification; this is an AI-generated visua
         if not Path(attempt['clip_path']).is_file():
             raise ValueError('Selected clip asset is missing')
         quality = json.loads(attempt['media_quality_json'] or '{}')
-        if quality.get('sha256') and hashlib.sha256(Path(attempt['clip_path']).read_bytes()).hexdigest() != quality['sha256']:
+        if quality.get('sha256') and media_sha256(attempt['clip_path']) != quality['sha256']:
             raise ValueError('The clip changed after validation; retrieve the existing interaction again')
         with self.storage.connect() as conn:
             conn.execute('BEGIN IMMEDIATE')
@@ -600,14 +654,14 @@ Do not invent evidence or real-world verification; this is an AI-generated visua
             path = Path(job['video_path'] or '')
             if not quality.get('technical_passed') or not path.is_file():
                 raise ValueError('Validated final media is missing')
-            if quality.get('sha256') and hashlib.sha256(path.read_bytes()).hexdigest() != quality['sha256']:
+            if quality.get('sha256') and media_sha256(path) != quality['sha256']:
                 raise ValueError('Final video changed after validation; reassemble before review')
             selected = conn.execute('SELECT * FROM video_shots WHERE production_id=? AND selected=1', (identifier,)).fetchall()
             if len(selected) != len(value['production_plan']['shots']) or any(not Path(item['clip_path']).is_file() for item in selected):
                 raise ValueError('Required selected shot media is missing')
             for item in selected:
                 media_quality = json.loads(item['media_quality_json'] or '{}')
-                if media_quality.get('sha256') and hashlib.sha256(Path(item['clip_path']).read_bytes()).hexdigest() != media_quality['sha256']:
+                if media_quality.get('sha256') and media_sha256(item['clip_path']) != media_quality['sha256']:
                     raise ValueError('A selected shot changed after validation; retrieve or regenerate it before review')
             conn.execute("UPDATE video_shots SET continuity_status='accepted' WHERE production_id=? AND selected=1", (identifier,))
             conn.execute("UPDATE video_productions SET status='pending_review',updated_at=? WHERE production_id=?", (int(time.time()),identifier))

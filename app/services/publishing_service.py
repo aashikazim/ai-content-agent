@@ -112,6 +112,8 @@ class PublishingService:
         # Support a dictionary or Pydantic model.
         if hasattr(plan, "model_dump"):
             plan = plan.model_dump()
+        if platform == 'facebook' and sum(scene['duration_seconds'] for scene in plan.get('scenes',[])) > 60:
+            raise ValueError('Long-form Facebook uploads are not supported by this Reels integration; use YouTube for this drama')
 
         title = plan["title"]
 

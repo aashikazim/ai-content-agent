@@ -7,7 +7,7 @@ documentation verifies model identifiers; account access remains unverified.
 import os
 
 from app.models.generation_config import DEFAULT_IMAGE_MODEL, GenerationConfig
-from app.services.runway_models import catalog_models, validate as validate_runway
+from app.services.runway_models import EDIT_MODELS, catalog_models, validate as validate_runway
 
 
 VERIFIED_ON = "2026-11-03"
@@ -24,8 +24,8 @@ CONTENT_TYPES = [
      "executable": False},
     {"id": "animated_comedy", "label": "Animated comedy", "status": "gemini_video", "cloud_executable": True, "phase": 4,
      "description": "Fiction/satire character designs and Gemini animated shots with human continuity checks.", "executable": False},
-    {"id": "long_drama", "label": "Long drama", "status": "planned", "phase": None,
-     "description": "Planned for a later phase; long-form shot orchestration is not implemented.", "executable": False},
+    {"id": "long_drama", "label": "Long drama", "status": "runway_video", "phase": 7, "cloud_executable": True,
+     "description": "2–20-minute fictional screenplay, consistent cast, up to 240 Runway shots and local assembly; human continuity inspection required.", "executable": False},
     {"id": "news", "label": "News", "status": "unverified_gemini_illustration", "cloud_executable": True, "phase": 6,
      "description": "Unverified news drafts and AI illustrative footage; source verification remains a human responsibility.",
      "executable": False},
@@ -85,6 +85,7 @@ def get_catalog() -> dict:
     }
     return {
         "schema_version": 1, "phase": 6,
+        "runway_edit_models": [{'id': key, **value} for key,value in EDIT_MODELS.items()],
         "content_types": [dict(item) for item in CONTENT_TYPES],
         "script_providers": [
             {"id": "ollama", "label": "Local Ollama", "configured": True,
@@ -135,7 +136,7 @@ def get_catalog() -> dict:
         "fps": [24, 30], "defaults": GenerationConfig().model_dump(mode="json"),
         "limits": {"duration_seconds": {"min": 30, "max": 1200},
                    "execution_duration_seconds": {"min": 30, "max": 60},
-                   "max_shots": 12, "max_character_references": 3,
+                   "max_shots": 12, "long_form_max_shots": 240, "long_form_duration_seconds": {"min":120,"max":1200}, "max_character_references": 3,
                    "max_cost_usd": "1000", "topic_characters": 1000,
                    "script_characters": 20000},
     }
@@ -179,8 +180,15 @@ def validate_for_script(config: GenerationConfig) -> None:
         raise ValueError("Kling was retired; explicitly choose Google or the local pipeline")
     if config.script_provider == "openai" and not os.getenv("OPENAI_API_KEY"):
         raise ValueError("OPENAI_API_KEY is not configured; choose local Ollama or configure the key on the server")
-    if config.duration_seconds > 60 or config.content_type == "long_drama":
-        raise ValueError("Long-form scripts are planned; script generation currently supports 30–60 seconds")
+    if config.content_type == 'long_drama':
+        if config.video_provider != 'runway' or not 120 <= config.duration_seconds <= 1200:
+            raise ValueError('Long-form drama needs Runway and a 120–1200-second target')
+        from math import ceil
+        from app.services.runway_models import capabilities
+        if config.max_shots < ceil(config.duration_seconds / capabilities(config)['clip_duration_seconds']['max']):
+            raise ValueError('Increase Maximum shots so the selected model can cover the full drama duration')
+    elif config.duration_seconds > 60:
+        raise ValueError("Short-form script generation supports 30–60 seconds; select long drama with Runway for longer stories")
     if config.source_mode != "topic" and config.topic.strip():
         raise ValueError("Remove the unused topic or select topic source mode")
     if config.source_mode != "script" and config.supplied_script.strip():
@@ -215,7 +223,5 @@ def validate_for_cloud_video(config: GenerationConfig) -> None:
     credential = 'RUNWAYML_API_SECRET' if config.video_provider == 'runway' else 'GEMINI_API_KEY'
     if not os.getenv(credential):
         raise ValueError(f"{credential} is not configured")
-    if config.content_type == "long_drama":
-        raise ValueError("Long drama remains planned; current productions support 30–60 seconds")
     if config.content_type in {"short_drama", "animated_comedy"} and config.narration != "model_audio":
         raise ValueError("Character dialogue requires model audio; local TTS is a single narrator")

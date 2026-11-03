@@ -14,17 +14,25 @@ from urllib.parse import urlsplit
 
 import httpx
 import requests
-from runwayml import APIConnectionError, APIError, APIStatusError, RunwayML
+from pydantic import Field
+from runwayml import APIConnectionError, APIError, APIStatusError, BaseModel, RunwayML
 
 from app.services.gemini_video_service import VideoProviderError
-from app.services.runway_models import capabilities, ratio, validate
+from app.services.runway_models import EDIT_MODELS, capabilities, ratio, validate
 
 TASK_ID = re.compile(r'^[A-Za-z0-9_-]{1,200}$')
 
 
+class UploadTarget(BaseModel):
+    upload_url: str = Field(alias='uploadUrl')
+    runway_uri: str = Field(alias='runwayUri')
+    fields: dict[str, str]
+
+
 class RunwayVideoService:
-    def __init__(self, config, *, client=None, session=None):
+    def __init__(self, config, *, client=None, session=None, model=None):
         self.config = config
+        self.model = model or config.video_model
         self.client = client
         self.session = session or requests.Session()
         self.session.trust_env = False
@@ -80,7 +88,29 @@ class RunwayVideoService:
         return 'data:image/png;base64,' + base64.b64encode(data).decode('ascii')
 
     def submit(self, prompt, *, aspect_ratio, references=(), previous_id=None,
-               operation='generate', duration=None, start_image=None):
+               operation='generate', duration=None, start_image=None, source_video=None):
+        if operation == 'edit':
+            if self.model not in EDIT_MODELS or not source_video:
+                raise VideoProviderError('Choose an explicit supported Runway edit model and a verified source clip')
+            if len(prompt) > (1000 if self.model == 'aleph2' else 26000 if self.model == 'kling_4' else 2500):
+                raise VideoProviderError('Edit instructions exceed this model\'s prompt limit')
+            uri = self.upload_media(source_video)
+            payload = {'model':self.model, 'prompt_text':prompt}
+            if self.model.startswith('klingO3'):
+                payload.update(prompt_video=uri, provider_settings={'keep_original_sound':True})
+                if references:
+                    payload['references'] = [{'uri':self.image(data)} for data in references]
+            else:
+                payload['video_uri'] = uri
+                if self.model == 'kling_4':
+                    payload['ratio'] = 'auto_' + self.config.resolution
+                    if references:
+                        payload['references'] = [{'uri':self.image(data)} for data in references]
+            created = self.call(lambda:self.sdk().video_to_video.create(**payload), paid=True)
+            return self.created_snapshot(created)
+        if operation == 'extend':
+            continuation = RunwayVideoService(self.config.model_copy(update={'video_input_mode':'image'}), client=self.sdk(), session=self.session)
+            return continuation.submit(prompt,aspect_ratio=aspect_ratio,references=references,duration=duration,start_image=start_image)
         validate(self.config, duration)
         if previous_id or operation != 'generate':
             raise VideoProviderError('Runway supports a newly authorized shot candidate; Gemini edit/extension operations are unavailable')
@@ -108,10 +138,41 @@ class RunwayVideoService:
         else:
             create = self.sdk().text_to_video.create
         created = self.call(lambda: create(**payload), paid=True)
+        return self.created_snapshot(created)
+
+    @staticmethod
+    def created_snapshot(created):
         identifier = getattr(created, 'id', None)
         if not isinstance(identifier, str) or not TASK_ID.fullmatch(identifier):
             raise VideoProviderError('Runway submission returned no usable task ID. Inspect billing and task history; do not resubmit.', uncertain=True)
         return {'interaction_id': identifier, 'status': 'in_progress', 'usage': {}}
+
+    def upload_media(self, path):
+        path = Path(path)
+        if not path.is_file() or not 0 < path.stat().st_size <= 100 * 1024 * 1024:
+            raise VideoProviderError('The edit source must be a nonempty local video below 100MB')
+        if path.stat().st_size <= 3 * 1024 * 1024:
+            return 'data:video/mp4;base64,' + base64.b64encode(path.read_bytes()).decode('ascii')
+        # Use the official SDK for the upload reservation. Its convenience
+        # multipart uploader creates a separate proxy-inheriting client; send
+        # the signed multipart data with our credential-free secure session.
+        target = self.call(lambda:self.sdk().post('/v1/uploads', cast_to=UploadTarget,
+            body={'filename':'source.mp4','type':'ephemeral'}))
+        upload_url = getattr(target,'upload_url',None)
+        uri = getattr(target,'runway_uri',None)
+        fields = getattr(target,'fields',None)
+        self.validate_url(upload_url, upload=True)
+        if not isinstance(uri,str) or not uri.startswith('runway://') or not isinstance(fields,dict) or not all(isinstance(k,str) and isinstance(v,str) for k,v in fields.items()):
+            raise VideoProviderError('Runway returned an invalid temporary upload identifier')
+        try:
+            with path.open('rb') as handle:
+                response = self.session.post(upload_url,headers={},data=fields,
+                    files={'file':('source.mp4',handle,'video/mp4')},timeout=(5,120),allow_redirects=False)
+            if response.status_code not in {200,201,204}:
+                raise VideoProviderError('Runway source-media transfer failed before generation; inspect the attempt')
+        except requests.RequestException:
+            raise VideoProviderError('Runway source-media transfer was interrupted before generation; no generation retry was sent') from None
+        return uri
 
     def retrieve(self, identifier):
         if not isinstance(identifier, str) or not TASK_ID.fullmatch(identifier):
@@ -139,12 +200,13 @@ class RunwayVideoService:
                 'provider': 'runway', 'provider_error': error, 'output': data.get('output', [])}
 
     @staticmethod
-    def validate_url(url):
+    def validate_url(url, *, upload=False):
         try:
             parsed = urlsplit(url)
             host = (parsed.hostname or '').lower()
             # Fail closed for a new CDN rather than fetching arbitrary URLs.
-            trusted = any(host.endswith('.' + suffix) for suffix in ('cloudfront.net', 'runwayml.com', 'runwaycdn.com'))
+            suffixes = ('cloudfront.net', 'runwayml.com', 'runwaycdn.com') + (('amazonaws.com',) if upload else ())
+            trusted = any(host.endswith('.' + suffix) for suffix in suffixes)
             if parsed.scheme != 'https' or parsed.username or parsed.password or parsed.port not in {None, 443} or not trusted:
                 raise ValueError
             addresses = socket.getaddrinfo(host, 443, type=socket.SOCK_STREAM)

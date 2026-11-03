@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from app.models.content_plan import ContentPlan
+from app.models.long_content_plan import parse_content_plan
 from app.services.analytics_storage import AnalyticsStorage
 from app.services.feedback_service import FeedbackService
 from app.services.publishing_storage import PublishingStorage
@@ -40,7 +40,7 @@ class WebDashboardService:
         if not job.get("plan_id"):
             return None
         try:
-            return ContentPlan.model_validate(
+            return parse_content_plan(
                 self.content_storage.get_plan(job["plan_id"])
             ).model_dump(mode="json")
         except (KeyError, OSError, ValueError):

@@ -16,6 +16,14 @@ INPUT_USD_PER_MILLION = 2
 OUTPUT_USD_PER_MILLION = 10
 
 
+def script_limits(config=None):
+    long = config is not None and config.content_type == 'long_drama'
+    return {'max_output_tokens': 64000 if long else MAX_OUTPUT_TOKENS,
+            'max_input_bytes': 200000 if long else MAX_INPUT_BYTES,
+            'input_tokens_estimate': 210000 if long else MAX_INPUT_TOKENS_ESTIMATE,
+            'timeout': 900 if long else 120}
+
+
 class PaidScriptError(RuntimeError):
     def __init__(self, message, *, uncertain=False):
         self.uncertain = uncertain
@@ -61,11 +69,12 @@ class OpenAIScriptService:
                 "The selected OpenAI model is unavailable to this account. Check access or explicitly select another available catalogue model."
             )
 
-    def generate_production_plan(self, prompt):
+    def generate_production_plan(self, prompt, *, configuration=None):
+        limits = script_limits(configuration)
         payload = {
             "model": self.model,
             "instructions": (
-                "Create an original short-form production script. Return only the required structured output. "
+                "Create an original production screenplay at the requested length. Return only the required structured output. "
                 "All content remains draft. Fiction and satire must be labelled. News is unverified; "
                 "never invent citations, evidence, statistics or quotations. Include all dialogue in each "
                 "scene's spoken narration and preserve the requested timing and word budgets."
@@ -73,16 +82,16 @@ class OpenAIScriptService:
             "input": prompt,
             "text": {"format": {"type": "json_schema", "name": "production_plan",
                                 "strict": True, "schema": strict_production_schema()}},
-            "max_output_tokens": MAX_OUTPUT_TOKENS,
+            "max_output_tokens": limits['max_output_tokens'],
             "reasoning": {"effort": "low"},
             "service_tier": "default",
             "store": False,
         }
-        if len(json.dumps(payload, ensure_ascii=False).encode("utf-8")) > MAX_INPUT_BYTES:
+        if len(json.dumps(payload, ensure_ascii=False).encode("utf-8")) > limits['max_input_bytes']:
             raise PaidScriptError("Script input exceeds the authorized input limit; shorten the topic, script or revision")
         try:
             response = self.session.post("https://api.openai.com/v1/responses",
-                headers=self._headers(), json=payload, timeout=(5, 120), allow_redirects=False)
+                headers=self._headers(), json=payload, timeout=(5, limits['timeout']), allow_redirects=False)
         except requests.RequestException:
             raise PaidScriptError(
                 "The OpenAI request outcome is uncertain. Inspect its attempt record; it will not be retried automatically.",

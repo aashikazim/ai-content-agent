@@ -14,9 +14,9 @@ class MediaValidationError(ValueError):
     pass
 
 
-def run(command):
+def run(command, *, timeout=180):
     try:
-        return subprocess.run(command, check=True, capture_output=True, text=True, timeout=180)
+        return subprocess.run(command, check=True, capture_output=True, text=True, timeout=timeout)
     except (subprocess.SubprocessError, OSError):
         raise MediaValidationError('Local media processing failed; inspect the clip and FFmpeg installation') from None
 
@@ -28,7 +28,13 @@ def probe(path):
         raise MediaValidationError('The video could not be decoded') from None
 
 
+def media_sha256(path):
+    with Path(path).open('rb') as handle:
+        return hashlib.file_digest(handle, 'sha256').hexdigest()
+
+
 def validate_clip(path, duration, *, require_audio=False, expected_dimensions=None, expected_fps=None):
+    timeout = max(180, int(duration * 3))
     metadata = probe(path)
     videos = [item for item in metadata.get('streams', []) if item.get('codec_type') == 'video']
     audio = [item for item in metadata.get('streams', []) if item.get('codec_type') == 'audio']
@@ -51,14 +57,15 @@ def validate_clip(path, duration, *, require_audio=False, expected_dimensions=No
     # Sample normalized frames: rejects static cards/empty frames. It does not
     # establish good acting, identity continuity or perceptual quality.
     frames = run(['ffmpeg', '-v', 'error', '-i', str(path), '-an', '-vf', 'fps=1,scale=64:64,format=gray',
-                  '-f', 'framemd5', '-']).stdout
+                  '-f', 'framemd5', '-'], timeout=timeout).stdout
     hashes = {line.rsplit(',', 1)[-1].strip() for line in frames.splitlines() if line and not line.startswith('#')}
     if len(hashes) < 2:
         raise MediaValidationError('The clip contains no measurable motion; static fallback is not allowed')
-    run(['ffmpeg', '-v', 'error', '-i', str(path), '-f', 'null', '-'])
+    run(['ffmpeg', '-v', 'error', '-i', str(path), '-f', 'null', '-'], timeout=timeout)
+    digest = media_sha256(path)
     return {'duration_seconds': measured, 'width': video['width'], 'height': video['height'],
             'has_audio': bool(audio), 'motion_samples_distinct': len(hashes),
-            'sha256': hashlib.sha256(Path(path).read_bytes()).hexdigest(), 'technical_passed': True}
+            'sha256': digest, 'technical_passed': True}
 
 
 def caption_segments(text, duration):
@@ -111,10 +118,12 @@ class CloudVideoRenderer:
         rendered, scenes = [], []
         for scene in production.content_plan.scenes:
             clips = []
+            scene_models = set()
             for shot in [item for item in production.shots if item.scene_number == scene.scene_number]:
                 candidate = selected.get(shot.shot_number)
                 if not candidate or not Path(candidate['clip_path']).is_file():
                     raise MediaValidationError('Required shot assets are missing; rendering cannot proceed')
+                scene_models.add(candidate.get('model') or self.config.video_model)
                 raw = output_dir / f'raw_{shot.shot_number}.mp4'
                 filters = f'scale={self.width}:{self.height}:force_original_aspect_ratio=decrease,pad={self.width}:{self.height}:(ow-iw)/2:(oh-ih)/2,fps={self.config.fps},setsar=1,format=yuv420p'
                 run(['ffmpeg', '-y', '-v', 'error', '-ss', str(candidate.get('trim_start_seconds', 0)), '-i', candidate['clip_path'],
@@ -152,7 +161,7 @@ class CloudVideoRenderer:
             # Preview image is extracted from real footage, never a text fallback.
             run(['ffmpeg', '-y', '-v', 'error', '-i', str(output), '-frames:v', '1', str(output_dir / f'scene_{scene.scene_number}.png')])
             scenes.append({'scene_number': scene.scene_number, 'status': 'available', 'duration': scene.duration_seconds,
-                'asset_type': 'generated_video', 'model': self.config.video_model,
+                'asset_type': 'generated_video', 'model': next(iter(scene_models)) if len(scene_models)==1 else 'multiple models', 'models':sorted(scene_models),
                 'license': 'AI-generated; provider terms and human rights review apply',
                 'attribution': ('Powered by Runway' if self.config.video_provider == 'runway' else 'Google Gemini Omni') + '; permission-confirmed user images where selected',
                 'source_url': 'https://runwayml.com' if self.config.video_provider == 'runway' else 'https://aistudio.google.com/docs/omni',
@@ -162,7 +171,7 @@ class CloudVideoRenderer:
         self.local_renderer.concatenate(rendered, joined)
         final = output_dir / 'final_video.mp4'
         run(['ffmpeg', '-y', '-v', 'error', '-i', str(joined), '-c:v', 'copy', '-af', 'loudnorm=I=-16:TP=-1.5:LRA=11',
-             '-c:a', 'aac', '-ar', '48000', '-ac', '2', '-movflags', '+faststart', str(final)])
+             '-c:a', 'aac', '-ar', '48000', '-ac', '2', '-movflags', '+faststart', str(final)], timeout=max(180,production.content_plan.total_duration*3))
         quality = validate_clip(final, production.content_plan.total_duration, require_audio=True,
                                 expected_dimensions=(self.width, self.height), expected_fps=self.config.fps)
         manifest = {'status': 'rendered', 'review_status': 'draft', 'title': production.content_plan.title,

@@ -109,7 +109,7 @@ if st.session_state.get("_create_video_last_job"):
 st.info(
     "Local illustrated previews support trends, topics and supplied scripts. OpenAI script generation requires "
     "a configured key, account model check and explicit cost confirmation. cloud production below uses moving "
-    "clips and character references. Verified news research and long drama remain planned. Saving settings never starts generation."
+    "clips and character references. Long drama uses Runway with 120–1200 seconds and up to240shots. News still requires human verification. Saving settings never starts generation."
 )
 
 with st.expander("Saved settings", expanded=bool(drafts)):
@@ -132,8 +132,13 @@ with st.expander("Saved settings", expanded=bool(drafts)):
 
 st.subheader("1. Format and source")
 formats = {item["id"]: item for item in catalog["content_types"]}
+def change_content_type():
+    long = st.session_state['cv_content_type'] == 'long_drama'
+    st.session_state['cv_duration_seconds'] = max(120, st.session_state.get('cv_duration_seconds',300)) if long else min(60,st.session_state.get('cv_duration_seconds',45))
+    st.session_state['cv_max_shots'] = max(60,st.session_state.get('cv_max_shots',12)) if long else min(12,st.session_state.get('cv_max_shots',12))
+
 content_type = st.selectbox(
-    "Content type", list(formats), key="cv_content_type",
+    "Content type", list(formats), key="cv_content_type", on_change=change_content_type,
     format_func=lambda value: f"{formats[value]['label']} · {formats[value].get('status', 'planned').replace('_', ' ')}",
 )
 st.caption(formats[content_type].get("description", ""))
@@ -229,7 +234,7 @@ captions = sound[1].selectbox(
     format_func=lambda value: {"scene_text": "Scene text · current baseline", "timed": "Timed phrases · cloud assembly"}[value],
 )
 with st.expander("Limits and character references"):
-    max_shots = st.number_input("Maximum shots", min_value=1, max_value=12, key="cv_max_shots")
+    max_shots = st.number_input("Maximum shots", min_value=1, max_value=240 if content_type == "long_drama" else 12, key="cv_max_shots")
     max_cost = st.number_input("Maximum cost (USD)", min_value=0.0, max_value=1000.0, step=1.0, key="cv_max_cost_usd")
     require_motion = st.checkbox("Require motion footage", key="cv_require_motion")
     st.caption("Upload character references and select them in the cloud production panel below. Character IDs must match the completed script.")
@@ -338,4 +343,4 @@ if catalog.get("phase", 1) >= 2:
     script_workshop(api, configuration, category, region, int(limit))
 
 if catalog.get("phase", 1) >= 3:
-    cloud_production(api)
+    cloud_production(api, catalog)

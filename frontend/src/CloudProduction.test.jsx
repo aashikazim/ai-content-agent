@@ -51,16 +51,44 @@ it('uses Runway start frames, credits and fresh paid consent without a Gemini ke
   expect(request.mock.calls.some(([path])=>/publish|\/review$/.test(path))).toBe(false);
 });
 
-it('disables Gemini-specific edit and extension for Runway shots', async()=>{
+it('enables explicitly selected Runway visual edits and final-frame continuation', async()=>{
   const user=userEvent.setup();
   const base=api();
   const request=vi.fn(async(path,options)=>path==='/generation/videos' && !options?.method ? {productions:[{...production,configuration:{video_provider:'runway'}}]} : base(path,options));
   render(<CloudProduction request={request}/>);
   await screen.findByLabelText('Existing production');
   await user.selectOptions(screen.getByLabelText('Existing production'),identifier);
-  expect(screen.getByRole('option',{name:'Edit this shot'})).toBeDisabled();
-  expect(screen.getByRole('option',{name:'Extend this shot'})).toBeDisabled();
+  expect(screen.getByRole('option',{name:'Edit this shot'})).toBeEnabled();
+  expect(screen.getByRole('option',{name:'Extend this shot'})).toBeEnabled();
   expect(screen.getByRole('option',{name:'Regenerate this shot'})).toBeEnabled();
+  await user.click(screen.getByText('Create another candidate'));
+  await user.selectOptions(screen.getByLabelText('Shot operation'),'edit');
+  expect(screen.getByLabelText(/Runway edit model/)).toHaveValue('aleph2');
+  expect(request.mock.calls.some(([,options])=>options?.method==='POST')).toBe(false);
+  await user.selectOptions(screen.getByLabelText('Shot operation'),'extend');
+  expect(screen.getByText(/Continue from the parent’s final frame/)).toBeVisible();
+});
+
+it('quotes the explicitly selected edit model and still requires cost consent',async()=>{
+  const user=userEvent.setup();const base=api();
+  const request=vi.fn(async(path,options)=>{
+    if(path==='/generation/videos' && !options?.method) return {productions:[{...production,configuration:{video_provider:'runway'}}]};
+    if(path.endsWith('/shot-quotes')) return {quote_id:identifier,model:'klingO3_pro',provider_label:'Runway',estimate_usd:'1.36',projected_estimate_usd:'6.76',shot_count:1,notice:'Visual edit; source audio preserved.'};
+    return base(path,options);
+  });
+  render(<CloudProduction request={request} editModels={[{id:'aleph2',label:'Aleph 2'},{id:'klingO3_pro',label:'Kling O3 Pro'}]}/>);
+  await screen.findByLabelText('Existing production');
+  await user.selectOptions(screen.getByLabelText('Existing production'),identifier);
+  await user.click(screen.getByText('Create another candidate'));
+  await user.selectOptions(screen.getByLabelText('Shot operation'),'edit');
+  await user.selectOptions(screen.getByLabelText(/Runway edit model/),'klingO3_pro');
+  await user.type(screen.getByLabelText('Shot change instructions'),'Change the lighting.');
+  await user.click(screen.getByRole('button',{name:'Estimate this shot change'}));
+  const quote=request.mock.calls.find(([path])=>path.endsWith('/shot-quotes'));
+  expect(JSON.parse(quote[1].body)).toMatchObject({operation:'edit',edit_model:'klingO3_pro',instructions:'Change the lighting.'});
+  expect(await screen.findByText('klingO3_pro')).toBeVisible();
+  expect(screen.getByRole('button',{name:'Confirm paid video generation'})).toBeDisabled();
+  expect(request.mock.calls.some(([path])=>path.endsWith('/shots') || /publish|\/review$/.test(path))).toBe(false);
 });
 it('requires separate quote and explicit confirmation for video and never publishes',async()=>{
   const user=userEvent.setup();const request=api();render(<CloudProduction request={request}/>);
