@@ -148,7 +148,7 @@ class PublishingService:
             platform
         )
 
-        if existing:
+        if existing and (existing['status'] != 'retry_authorized' or platform != 'facebook' or existing['platform_video_id']):
             raise ValueError(
                 "A publishing attempt already exists "
                 f"for job {job_id} on {platform}. "
@@ -161,12 +161,8 @@ class PublishingService:
         # 7. Atomically reserve publication
         # ----------------------------------
         try:
-            publication_id = (
-                self.publications.reserve_publication(
-                    job_id,
-                    platform
-                )
-            )
+            publication_id = (self.publications.reserve_authorized_retry(existing['publication_id'])
+                              if existing else self.publications.reserve_publication(job_id, platform))
 
         except sqlite3.IntegrityError as exc:
             raise ValueError(

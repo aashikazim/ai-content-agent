@@ -55,7 +55,7 @@ def create(api):
 
 def test_cloud_endpoints_require_session_and_csrf(generation_api):
     api=generation_api
-    for path in ['videos','references']:
+    for path in ['videos','references','runway/credits']:
         assert api.client.get('/api/v1/generation/'+path,headers=api.api_headers).status_code==401
     sign_in(api)
     assert api.client.post('/api/v1/generation/video-quotes',json={'script_attempt_id':str(uuid4())}).status_code==403
@@ -118,4 +118,59 @@ def test_missing_keys_retired_kling_and_bad_shot_plans_cannot_bill(cloud_api,mon
     assert api.client.post('/api/v1/generation/video-quotes',json={'script_attempt_id':api.script_id},headers=api.headers).status_code==422
     assert api.provider.posts==0
     catalog=api.client.get('/api/v1/generation/catalog').json()
-    assert [item['id'] for item in catalog['video_providers']]==['local','google']
+    assert [item['id'] for item in catalog['video_providers']]==['local','google','runway']
+
+
+def test_runway_image_quote_submission_and_manual_review_are_separate(cloud_api, monkeypatch):
+    api = cloud_api
+    monkeypatch.setenv('RUNWAYML_API_SECRET', 'test-only-runway-key')
+    monkeypatch.delenv('GEMINI_API_KEY')
+    with api.cloud_service.storage.connect() as conn:
+        request = json.loads(conn.execute('SELECT request_json FROM script_generation_attempts').fetchone()[0])
+        request['configuration'].update(video_provider='runway', video_model='gen4_turbo', video_input_mode='image')
+        conn.execute('UPDATE script_generation_attempts SET request_json=?', (json.dumps(request),))
+    api.provider.check_model = Mock(return_value={'available_credits': 10000})
+    # Neither a scheduler key nor missing CSRF can authorize paid video.
+    api.client.cookies.clear()
+    assert api.client.post('/api/v1/generation/video-quotes', json={'script_attempt_id': api.script_id}, headers=api.api_headers).status_code == 401
+    response = api.client.post('/api/v1/auth/login', json={'username':'generation-admin','password':'a-long-temporary-admin-password'})
+    api.headers = {'X-CSRF-Token': response.json()['csrf_token']}
+    assert api.client.post('/api/v1/generation/video-quotes', json={'script_attempt_id': api.script_id}, headers=api.headers).status_code == 422
+    image = Image.new('RGB', (256, 512), 'blue'); buffer = io.BytesIO(); image.save(buffer, format='PNG')
+    response = api.client.post('/api/v1/generation/references', headers=api.headers, json={
+        'character_id':'scene_1', 'name':'Original scene frame', 'description':'Ocean scene',
+        'rights_note':'Synthetic test fixture', 'rights_confirmed':True, 'image_base64':base64.b64encode(buffer.getvalue()).decode()})
+    assert response.status_code == 201
+    reference = response.json()['reference_id']
+    response = api.client.post('/api/v1/generation/video-quotes', headers=api.headers,
+        json={'script_attempt_id':api.script_id, 'start_image_reference_id':reference})
+    assert response.status_code == 200, response.text
+    quote = response.json()
+    assert quote['provider'] == 'runway' and quote['available_credits'] == 10000
+    assert api.provider.posts == 0
+    assert api.client.post('/api/v1/generation/videos', headers=api.headers,
+        json={'quote_id':quote['quote_id'], 'confirmed':False}).status_code == 422
+    created = api.client.post('/api/v1/generation/videos', headers=api.headers,
+        json={'quote_id':quote['quote_id'], 'confirmed':True})
+    assert created.status_code == 202, created.text
+    production = api.cloud_service.process(created.json()['production_id'], submit_queued=True)
+    production = api.cloud_service.process(production['production_id'])
+    assert production['status'] == 'technical_ready'
+    assert all(shot['provider'] == 'runway' and shot['generation_id'] for shot in production['shots'])
+    response = api.client.post(f"/api/v1/generation/videos/{production['production_id']}/review", headers=api.headers,
+        json={'continuity_confirmed':True,'captions_confirmed':True,'rights_confirmed':True})
+    assert response.status_code == 200
+    assert api.cloud_service.jobs.get_job(production['job_id'])['status'] == 'pending_review'
+    api.publisher.assert_not_called()
+
+
+def test_runway_credit_lookup_is_read_only_and_private(generation_api, monkeypatch):
+    api = generation_api
+    sign_in(api)
+    lookup = Mock(return_value={'available_credits': 1234})
+    monkeypatch.setattr('app.services.runway_video_service.RunwayVideoService.check_model', lookup)
+    response = api.client.get('/api/v1/generation/runway/credits')
+    assert response.status_code == 200 and response.json() == {'available_credits':1234}
+    lookup.assert_called_once()
+    api.execute.assert_not_called()
+    api.publisher.assert_not_called()

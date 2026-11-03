@@ -108,7 +108,7 @@ if st.session_state.get("_create_video_last_job"):
 
 st.info(
     "Local illustrated previews support trends, topics and supplied scripts. OpenAI script generation requires "
-    "a configured key, account model check and explicit cost confirmation. Gemini production below uses moving "
+    "a configured key, account model check and explicit cost confirmation. cloud production below uses moving "
     "clips and character references. Verified news research and long drama remain planned. Saving settings never starts generation."
 )
 
@@ -193,6 +193,11 @@ def model_controls(kind, column):
 script_provider, script_model = model_controls("script", script_column)
 video_provider, video_model = model_controls("video", video_column)
 
+video_input_mode = st.selectbox("Runway input mode", ["text", "image"], key="cv_video_input_mode",
+    format_func=lambda value: "Text to video" if value == "text" else "Image to video") if video_provider == "runway" else "text"
+if video_provider == "runway":
+    st.caption("Gen-4 Turbo needs image input. Gen-4 and Kling 2.5 require local narration. Select scene start frames in the production panel after generating the script. Native model resolution differs from final FFmpeg output.")
+
 st.subheader("3. Look and delivery")
 look = st.columns(3)
 styles = {style["id"]: style for style in catalog["styles"]}
@@ -217,17 +222,17 @@ fps = delivery[3].selectbox("Frames per second", catalog["fps"], key="cv_fps")
 sound = st.columns(2)
 narration = sound[0].selectbox(
     "Narration", ["local_tts", "model_audio"], key="cv_narration",
-    format_func=lambda value: {"local_tts": "Local TTS · current baseline", "model_audio": "Gemini model audio"}[value],
+    format_func=lambda value: {"local_tts": "Local TTS · current baseline", "model_audio": "Selected model audio"}[value],
 )
 captions = sound[1].selectbox(
     "Captions", ["scene_text", "timed"], key="cv_captions",
-    format_func=lambda value: {"scene_text": "Scene text · current baseline", "timed": "Timed phrases · Gemini assembly"}[value],
+    format_func=lambda value: {"scene_text": "Scene text · current baseline", "timed": "Timed phrases · cloud assembly"}[value],
 )
 with st.expander("Limits and character references"):
     max_shots = st.number_input("Maximum shots", min_value=1, max_value=12, key="cv_max_shots")
     max_cost = st.number_input("Maximum cost (USD)", min_value=0.0, max_value=1000.0, step=1.0, key="cv_max_cost_usd")
     require_motion = st.checkbox("Require motion footage", key="cv_require_motion")
-    st.caption("Upload character references and select them in the Gemini production panel below. Character IDs must match the completed script.")
+    st.caption("Upload character references and select them in the cloud production panel below. Character IDs must match the completed script.")
     if st.session_state.get("cv_character_reference_ids"):
         st.caption("Character-reference video generation is planned; these references are saved only.")
 
@@ -238,6 +243,9 @@ configuration = {
     "script_model": script_model,
     "video_provider": video_provider,
     "video_model": video_model,
+    "video_input_mode": video_input_mode,
+    "start_image_reference_id": None,
+    "shot_image_reference_ids": {},
     "image_mode": image_mode,
     "image_model": image_model,
     "duration_seconds": int(duration),
@@ -271,7 +279,7 @@ for reason in preflight.get("errors", []):
 executable = preflight.get("executable", False)
 if video_provider != "local":
     executable = False
-    st.info("Use the script workshop, then the Gemini production panel below for cloud video. The local button does not submit cloud work.")
+    st.info("Use the script workshop, then the cloud production panel below for cloud video. The local button does not submit cloud work.")
 if executable:
     st.success("These settings can run locally. Generation will stop at manual review.")
 else:

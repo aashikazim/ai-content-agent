@@ -7,6 +7,7 @@ documentation verifies model identifiers; account access remains unverified.
 import os
 
 from app.models.generation_config import DEFAULT_IMAGE_MODEL, GenerationConfig
+from app.services.runway_models import catalog_models, validate as validate_runway
 
 
 VERIFIED_ON = "2026-11-03"
@@ -117,6 +118,11 @@ def get_catalog() -> dict:
              "status": "account_access_unverified" if os.getenv("GEMINI_API_KEY") else "not_configured",
              "reason": "Gemini native 720p footage with audio, reference images and explicit paid authorization. 1080p is upscaled locally. Background/account access is unverified.",
              "models": [{**google, "implemented": True, "status": "account_access_unverified", "character_references": "supported", "native_resolution": "720p"}]},
+            {"id": "runway", "label": "Runway Dev API", "configured": bool(os.getenv('RUNWAYML_API_SECRET')),
+             "implemented": True, "executable": bool(os.getenv('RUNWAYML_API_SECRET')),
+             "account_access": "unverified", "status": "account_access_unverified",
+             "reason": "Official Runway SDK; model-specific text/image inputs, explicit credit confirmation and no paid retries. Native resolution varies; FFmpeg assembles locally.",
+             "models": catalog_models()},
         ],
         "image_models": [{"id": _local_image_model(), "label": _local_image_model(),
                           "status": "model_access_unverified", "implemented": True}],
@@ -146,8 +152,12 @@ def validate_for_draft(config: GenerationConfig) -> None:
     if config.script_model not in expected_scripts:
         raise ValueError("Unknown script model for the selected provider; choose a model from the catalogue")
     expected_video = {"local": "local-pipeline", "google": GOOGLE_MODEL, "kling": KLING_MODEL}
-    if config.video_model != expected_video[config.video_provider]:
+    if config.video_provider == 'runway':
+        validate_runway(config)
+    elif config.video_model != expected_video[config.video_provider]:
         raise ValueError("Unknown video model for the selected provider; choose a model from the catalogue")
+    if config.video_provider != 'runway' and (config.video_input_mode != 'text' or config.start_image_reference_id or config.shot_image_reference_ids):
+        raise ValueError('Start-frame input controls are available for Runway only')
     if config.image_model != _local_image_model():
         raise ValueError("Unknown image model; choose the configured local model from the catalogue")
     if config.video_provider == "google":
@@ -181,7 +191,7 @@ def validate_for_execution(config: GenerationConfig) -> None:
     """Validate a renderable job; paid authorization is also enforced in JobService."""
     config = GenerationConfig.model_validate(config)
     validate_for_script(config)
-    if config.video_provider == "google":
+    if config.video_provider in {"google", "runway"}:
         validate_for_cloud_video(config)
         return
     if config.content_type != "realistic_short":
@@ -200,11 +210,12 @@ def validate_for_execution(config: GenerationConfig) -> None:
 
 def validate_for_cloud_video(config: GenerationConfig) -> None:
     validate_for_script(config)
-    if config.video_provider != "google":
-        raise ValueError("Select Google Gemini explicitly for cloud video")
-    if not os.getenv("GEMINI_API_KEY"):
-        raise ValueError("GEMINI_API_KEY is not configured")
+    if config.video_provider not in {"google", "runway"}:
+        raise ValueError("Select Google Gemini or Runway explicitly for cloud video")
+    credential = 'RUNWAYML_API_SECRET' if config.video_provider == 'runway' else 'GEMINI_API_KEY'
+    if not os.getenv(credential):
+        raise ValueError(f"{credential} is not configured")
     if config.content_type == "long_drama":
         raise ValueError("Long drama remains planned; current productions support 30–60 seconds")
     if config.content_type in {"short_drama", "animated_comedy"} and config.narration != "model_audio":
-        raise ValueError("Character dialogue requires Gemini model audio; local TTS is a single narrator")
+        raise ValueError("Character dialogue requires model audio; local TTS is a single narrator")

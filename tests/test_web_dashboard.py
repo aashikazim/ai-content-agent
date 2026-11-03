@@ -568,6 +568,26 @@ def test_private_api_responses_are_not_cached(web):
     assert response.headers["x-content-type-options"] == "nosniff"
 
 
+def test_authorized_facebook_retry_requires_browser_live_confirmation(web, monkeypatch):
+    job_id, _ = seed_job(web, status='approved')
+    publisher = use_mock_publisher(web, monkeypatch, outcome={'video_id':'fb-fixture','status':'submitted'})
+    storage = PublishingStorage(web.db_path)
+    identifier = storage.reserve_publication(job_id,'facebook')
+    storage.update(identifier,'needs_reconciliation')
+    storage.authorize_retry(identifier, confirmed_not_uploaded=True, notes='Verified rejected start')
+    csrf = sign_in(web)
+    url = f'/api/v1/jobs/{job_id}/publish'
+    response = web.client.post(url, headers={'X-CSRF-Token':csrf}, json={'platform':'facebook','dry_run':False})
+    assert response.status_code == 409
+    publisher.upload.assert_not_called()
+    assert storage.get(identifier)['status'] == 'retry_authorized'
+    response = web.client.post(url, headers={'X-CSRF-Token':csrf}, json={'platform':'facebook','dry_run':False,'confirmed':True})
+    assert response.status_code == 200, response.text
+    assert response.json()['publication_id'] == identifier
+    assert web.client.post(url, headers={'X-CSRF-Token':csrf}, json={'platform':'facebook','dry_run':False,'confirmed':True}).status_code == 409
+    publisher.upload.assert_called_once()
+
+
 @pytest.mark.parametrize("path", ["/", "/review", "/publishing"])
 def test_built_frontend_loads_at_browser_routes(web, monkeypatch, path):
     import server

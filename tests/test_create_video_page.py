@@ -88,6 +88,8 @@ class FakeSession:
             return FakeResponse({"productions": []})
         if path == "/generation/video-quotes":
             return FakeResponse({"quote_id":"ba7fb41f-eafa-493d-9b28-31358dc98847","estimate_usd":"5.65","projected_estimate_usd":"5.86","shot_count":5,"notice":"Estimate only; no automatic retries"})
+        if path == "/generation/runway/credits":
+            return FakeResponse({'available_credits': 1234})
         if path == "/generation/videos" and method == "POST":
             if self.fail_cloud_creation:
                 raise requests.Timeout("Raw exception with " + CLOUD_SECRET)
@@ -413,3 +415,23 @@ def test_streamlit_unknown_video_acknowledgement_does_not_retry(api_session):
     assert CLOUD_SECRET not in visible_text(app)
     assert button(app,'Confirm paid video generation').disabled
     assert len([call for call in api_session.calls if call[:2] == ('POST','/generation/videos')]) == 1
+
+
+def test_runway_controls_and_consent_are_independent_of_script_provider(api_session, monkeypatch):
+    monkeypatch.setenv('RUNWAYML_API_SECRET', CLOUD_SECRET)
+    identifier = cloud_script(api_session)
+    api_session.attempts[0]['configuration'] = {'video_provider':'runway', 'video_model':'gen4_turbo', 'video_input_mode':'image'}
+    app = page()
+    app.selectbox(key='cv_video_provider').select('runway').run()
+    app.selectbox(key='cv_video_input_mode').select('image').run()
+    assert app.selectbox(key='cv_script_provider').value == 'ollama'
+    assert button(app, 'Start local generation').disabled
+    app.selectbox(key='cloud_script').select(identifier).run()
+    assert any(element.value == 'Scene start frames' for element in app.subheader)
+    button(app, 'Check Runway credits').click().run()
+    assert 'Runway available credits: 1234' in visible_text(app)
+    button(app, 'Estimate Runway video cost').click().run()
+    assert button(app, 'Confirm paid video generation').disabled
+    assert any(element.value == 'Authorize Runway video cost' for element in app.subheader)
+    assert not job_calls(api_session)
+    assert not [call for call in api_session.calls if call[:2] == ('POST','/generation/videos')]

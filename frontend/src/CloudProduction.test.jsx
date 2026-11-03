@@ -21,6 +21,47 @@ function api({lost=false,existing=false}={}) {
   });
 }
 const paid = request=>request.mock.calls.filter(([path,options])=>path==='/generation/videos' && options?.method==='POST');
+it('uses Runway start frames, credits and fresh paid consent without a Gemini key', async()=>{
+  const user=userEvent.setup();
+  const base=api();
+  const frameId='ba7fb41f-eafa-493d-9b28-31358dc98850';
+  const request=vi.fn(async(path,options)=>{
+    if(path==='/generation/scripts') return {attempts:[{attempt_id:scriptId,status:'completed',production_plan:plan,configuration:{video_provider:'runway',video_model:'gen4_turbo',video_input_mode:'image'}}]};
+    if(path==='/generation/references') return {references:[{reference_id:frameId,name:'A scene start frame',character_id:'scene_a'}]};
+    if(path==='/generation/runway/credits') return {available_credits:1000};
+    if(path==='/generation/video-quotes') return {quote_id:identifier,provider_label:'Runway',estimated_credits:'225',available_credits:1000,estimate_usd:'2.25',projected_estimate_usd:'2.25',shot_count:1,notice:'Explicit Runway authorization required.'};
+    return base(path,options);
+  });
+  render(<CloudProduction request={request}/>);
+  await screen.findByRole('option',{name:/A moving original story/});
+  await user.selectOptions(screen.getByLabelText('Completed script with a shot plan'),scriptId);
+  await user.selectOptions(screen.getByLabelText('Start frame for shot 1'),frameId);
+  await user.click(screen.getByRole('button',{name:'Check Runway credits'}));
+  await screen.findByText(/Runway available credits: 1000/);
+  await user.click(screen.getByRole('button',{name:'Estimate Runway video cost'}));
+  const quoteCall=request.mock.calls.find(([path])=>path==='/generation/video-quotes');
+  expect(JSON.parse(quoteCall[1].body)).toMatchObject({script_attempt_id:scriptId,start_image_reference_id:null,shot_image_reference_ids:{1:frameId}});
+  const submit=await screen.findByRole('button',{name:'Confirm paid video generation'});
+  expect(submit).toBeDisabled();
+  await user.click(screen.getByRole('checkbox',{name:/Authorize Runway video cost/}));
+  expect(submit).toBeEnabled();
+  await user.selectOptions(screen.getByLabelText('Start frame for shot 1'),'');
+  expect(screen.queryByRole('button',{name:'Confirm paid video generation'})).not.toBeInTheDocument();
+  expect(paid(request)).toHaveLength(0);
+  expect(request.mock.calls.some(([path])=>/publish|\/review$/.test(path))).toBe(false);
+});
+
+it('disables Gemini-specific edit and extension for Runway shots', async()=>{
+  const user=userEvent.setup();
+  const base=api();
+  const request=vi.fn(async(path,options)=>path==='/generation/videos' && !options?.method ? {productions:[{...production,configuration:{video_provider:'runway'}}]} : base(path,options));
+  render(<CloudProduction request={request}/>);
+  await screen.findByLabelText('Existing production');
+  await user.selectOptions(screen.getByLabelText('Existing production'),identifier);
+  expect(screen.getByRole('option',{name:'Edit this shot'})).toBeDisabled();
+  expect(screen.getByRole('option',{name:'Extend this shot'})).toBeDisabled();
+  expect(screen.getByRole('option',{name:'Regenerate this shot'})).toBeEnabled();
+});
 it('requires separate quote and explicit confirmation for video and never publishes',async()=>{
   const user=userEvent.setup();const request=api();render(<CloudProduction request={request}/>);
   await screen.findByRole('option',{name:/A moving original story/});

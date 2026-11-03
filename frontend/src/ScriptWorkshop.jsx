@@ -18,7 +18,7 @@ export function PaidScriptAuthorization({ request, configuration, context, purpo
   }
   return <div className="generation-paid-authorization">
     <h3>Authorize one script request</h3>
-    <p>OpenAI receives the supplied topic, script and revision context. Text generation only; Gemini video requires a separate quote and confirmation. No automatic retries.</p>
+    <p>OpenAI receives the supplied topic, script and revision context. Text generation only; Cloud video requires a separate quote and confirmation. No automatic retries.</p>
     <button className="button subtle" type="button" onClick={estimate} disabled={busy}>{busy ? 'Checking access…' : 'Check access & estimate script cost'}</button>
     {error && <p role="alert">{error}</p>}
     {quote?.paid && <><p><strong>Maximum estimated token cost: ${quote.maximum_cost_usd}</strong></p><p>{quote.notice} Quote expires in ten minutes. Provider billing remains authoritative.</p>
@@ -68,7 +68,7 @@ export default function ScriptWorkshop({ configuration, request, category, regio
   async function inspect() { try { setAttempts((await request('/generation/scripts')).attempts || []); } catch (err) { setError(err.message); } }
   const running = ['queued', 'running'].includes(current?.status);
   return <section className="generation-section script-workshop"><div className="generation-section-heading"><span>✎</span><div><h2>Script workshop</h2><p>Draft outlines, narration and character dialogue before producing video. Google-selected drafts include camera/action shot plans; news drafts remain unverified.</p></div></div>
-    <p>30–60-second script drafts only. This never approves or publishes a video. Use the Gemini production panel for reference images and moving clips. Long drama remains planned.</p>
+    <p>30–60-second script drafts only. This never approves or publishes a video. Use the cloud production panel for reference images and moving clips. Long drama remains planned.</p>
     <label htmlFor="script-parent">Revise a completed draft</label><select id="script-parent" value={parent} onChange={event => setParent(event.target.value)} disabled={busy || running}><option value="">New script</option>{attempts.filter(item => item.status === 'completed').map(item => <option key={item.attempt_id} value={item.attempt_id}>{item.production_plan?.content_plan?.title || item.attempt_id.slice(0, 8)}</option>)}</select>
     <label htmlFor="script-revision">Revision instructions (optional)</label><textarea id="script-revision" rows={3} maxLength={2000} value={revision} onChange={event => setRevision(event.target.value)} disabled={busy || running} />
     {isCloud && <><button className="button subtle" type="button" onClick={async () => { setError(''); try { setAccess((await request('/generation/openai-models')).models); } catch (err) { setError(err.message); } }}>Check available OpenAI models</button>

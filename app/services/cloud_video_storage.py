@@ -45,8 +45,14 @@ class CloudVideoStorage(GenerationStorage):
                     image_path TEXT NOT NULL, sha256 TEXT NOT NULL, created_at INTEGER NOT NULL
                 );
             ''')
+            # React loads references and productions concurrently. Serialize
+            # additive migrations so those first reads cannot ALTER the same
+            # legacy table at the same time.
+            conn.execute('BEGIN IMMEDIATE')
             columns = {row[1] for row in conn.execute('PRAGMA table_info(video_shots)')}
-            for name, definition in [('trim_start_seconds', 'REAL NOT NULL DEFAULT 0'), ('media_quality_json', 'TEXT')]:
+            for name, definition in [('trim_start_seconds', 'REAL NOT NULL DEFAULT 0'), ('media_quality_json', 'TEXT'),
+                                     ('provider', "TEXT NOT NULL DEFAULT 'google'"), ('model', 'TEXT'),
+                                     ('last_polled_at', 'INTEGER')]:
                 if name not in columns:
                     conn.execute(f'ALTER TABLE video_shots ADD COLUMN {name} {definition}')
 
@@ -74,6 +80,7 @@ class CloudVideoStorage(GenerationStorage):
             item['usage'] = json.loads(item.pop('usage_json') or 'null')
             item['media_quality'] = json.loads(item.pop('media_quality_json') or 'null')
             item['selected'] = bool(item['selected'])
+            item['generation_id'] = item['interaction_id']
             item['video_url'] = f'/api/v1/generation/videos/{identifier}/shots/{item["attempt_id"]}/video' if shot['clip_path'] else None
             value['shots'].append(item)
         value['events'] = [dict(event) for event in events]

@@ -8,16 +8,22 @@ from app.services.streamlit_admin_service import ContentAPIError
 
 def cloud_production(api):
     st.divider()
-    st.header('Gemini video production')
-    st.caption('Reuse a completed shot plan, explicitly authorize moving clips, assemble locally, then inspect quality before manual review. No automatic local fallback. Kling is retired.')
+    st.header('Cloud video production')
+    st.caption('Reuse a completed shot plan, explicitly authorize moving clips, assemble locally, then inspect quality before manual review. No automatic local fallback. Runway-hosted Kling models use the Runway key; direct Kling is retired.')
     try:
         scripts = [item for item in api.scripts() if item['status'] == 'completed' and item.get('production_plan', {}).get('shots')]
         references = api.cloud('references')['references']
         productions = api.cloud('videos')['productions']
     except ContentAPIError as error:
         st.warning(str(error)); return
+    st.markdown('[Powered by Runway](https://runwayml.com)')
+    if st.button('Check Runway credits'):
+        try:
+            account = api.cloud('runway/credits')
+            st.info(f"Runway available credits: {account.get('available_credits', 'unavailable')} (current snapshot)")
+        except ContentAPIError as error: st.error(str(error))
     with st.expander('Character reference registry'):
-        st.caption('Use character IDs from the script. Upload images you may use; selected images are sent to Google only after paid confirmation. Voice editing is unsupported and continuity is not guaranteed.')
+        st.caption('For character images, use IDs from the script. For scene start frames, use an ID such as scene_1. Upload images you may use; selected images are sent to the selected cloud provider only after paid confirmation. Voice editing is unsupported and continuity is not guaranteed.')
         with st.form('cloud_character_upload'):
             fields = {key: st.text_input(label, key='cloud_ref_' + key, max_chars=limit) for key,label,limit in [
                 ('character_id','Character ID',32), ('name','Character name',80), ('description','Appearance description',1000),
@@ -42,26 +48,40 @@ def cloud_production(api):
     by_reference = {item['reference_id']:item for item in references}
     selected_refs = st.multiselect('Character references to send (maximum 3)', list(by_reference), max_selections=3,
         format_func=lambda value: by_reference[value]['name'] + ' · ' + by_reference[value]['character_id'], key='cloud_references')
-    fingerprint = json.dumps([selected,selected_refs])
+    config = (by_script.get(selected, {}).get('configuration') or {})
+    provider_name = 'Runway' if config.get('video_provider') == 'runway' else 'Gemini'
+    frame, shot_frames = None, {}
+    if config.get('video_provider') == 'runway' and config.get('video_input_mode') == 'image':
+        st.subheader('Scene start frames')
+        st.caption('Select a composed scene per shot. A shared frame explicitly starts multiple shots from the same image. Use the registry above to upload permission-confirmed scene images.')
+        label = lambda value: by_reference[value]['name'] if value else 'Use individual frame / shared frame'
+        frame = st.selectbox('Shared start frame (optional)', [None, *by_reference], format_func=label, key='cloud_frame_' + selected)
+        for shot in by_script[selected]['production_plan']['shots']:
+            image = st.selectbox(f"Start frame for shot {shot['shot_number']}", [None, *by_reference], format_func=label, key=f"cloud_frame_{selected}_{shot['shot_number']}")
+            if image: shot_frames[shot['shot_number']] = image
+    fingerprint = json.dumps([selected,selected_refs,frame,shot_frames])
     if st.session_state.get('cloud_quote_fingerprint') != fingerprint:
         st.session_state['cloud_quote_fingerprint'] = fingerprint
         st.session_state.pop('cloud_quote',None)
     uncertain = st.session_state.get('cloud_uncertain',False)
-    if st.button('Estimate Gemini video cost', disabled=not selected or uncertain):
+    if st.button(f'Estimate {provider_name} video cost', disabled=not selected or uncertain):
         try:
-            quote = api.cloud('video-quotes', {'script_attempt_id':selected,'reference_ids':selected_refs})
+            quote = api.cloud('video-quotes', {'script_attempt_id':selected,'reference_ids':selected_refs, **({'start_image_reference_id':frame,'shot_image_reference_ids':shot_frames} if config.get('video_input_mode') == 'image' else {})})
             st.session_state['cloud_quote'] = {**quote,'kind':'create'}
         except ContentAPIError as error: st.error(str(error))
     if quote := st.session_state.get('cloud_quote'):
         st.info(f"Estimated request cost: ${quote['estimate_usd']}; {quote['shot_count']} shot(s). Projected production estimate: ${quote['projected_estimate_usd']}.")
         st.write(quote['notice'])
         st.write(quote.get('request_summary',{}))
-        st.subheader('Authorize Gemini video cost')
-        confirmed = st.checkbox('I authorize these Gemini requests and transfer of the selected material at the displayed estimated cost', key='cloud_confirm_' + quote['quote_id'])
+        provider_name = quote.get('provider_label', provider_name)
+        if quote.get('estimated_credits') is not None:
+            st.info(f"Runway estimated credits: {quote['estimated_credits']}; available at quote time: {quote.get('available_credits', 'unavailable')}.")
+        st.subheader(f'Authorize {provider_name} video cost')
+        confirmed = st.checkbox(f'I authorize these {provider_name} requests and transfer of the selected material at the displayed estimated cost', key='cloud_confirm_' + quote['quote_id'])
         if uncertain:
-            st.warning('A previous submission has an unknown outcome. Inspect production history and Google usage before requesting a new quote.')
+            st.warning('A previous submission has an unknown outcome. Inspect production history and provider usage before requesting a new quote.')
         elif not confirmed:
-            st.info('Check the Gemini video authorization checkbox above to enable Confirm paid video generation. Script-cost authorization is separate.')
+            st.info(f'Check the {provider_name} video authorization checkbox above to enable Confirm paid video generation. Script-cost authorization is separate.')
         else:
             st.caption('Video cost authorized. Generation starts only when you click Confirm paid video generation.')
         if st.button('Confirm paid video generation', disabled=not confirmed or uncertain):
@@ -78,8 +98,8 @@ def cloud_production(api):
                 st.error(str(error))
                 if error.uncertain: st.session_state['cloud_uncertain'] = True
     if uncertain or st.session_state.get('cloud_uncertain'):
-        st.error('Submission outcome is unknown. Inspect production history and Google usage before a new paid request. No automatic retry is sent.')
-        if st.checkbox('I inspected production history and Google usage', key='cloud_inspected'):
+        st.error('Submission outcome is unknown. Inspect production history and provider usage before a new paid request. No automatic retry is sent.')
+        if st.checkbox('I inspected production history and provider usage', key='cloud_inspected'):
             if st.button('Allow a separately quoted request'):
                 st.session_state.pop('cloud_uncertain',None); st.session_state.pop('cloud_quote',None); st.rerun()
     by_id = {item['production_id']:item for item in productions}
@@ -90,7 +110,7 @@ def cloud_production(api):
             st.rerun()
         except ContentAPIError as error: st.error(str(error))
     if not productions:
-        st.info('No cloud video productions yet. Generate a Google-selected script with a shot plan in the workshop above.'); return
+        st.info('No cloud video productions yet. Generate a Google- or Runway-selected script with a shot plan in the workshop above.'); return
     current_id = st.selectbox('Existing production', list(by_id), key='cloud_current',
         format_func=lambda value: by_id[value]['production_plan']['content_plan']['title'] + ' · ' + by_id[value]['status'])
     value = by_id[current_id]
@@ -121,7 +141,7 @@ def cloud_production(api):
                     try: api.cloud(f'videos/{current_id}/select',{'attempt_id':attempt_id,'trim_start_seconds':trim}); st.rerun()
                     except ContentAPIError as error: st.error(str(error))
             if shot['status'] in {'completed','failed','validation_failed'}:
-                operation = st.selectbox('Shot operation', ['generate','edit','extend'] if shot['status'] == 'completed' else ['generate'],key='cloud_operation_' + attempt_id)
+                operation = st.selectbox('Shot operation', ['generate','edit','extend'] if shot['status'] == 'completed' and value.get('configuration', {}).get('video_provider') != 'runway' else ['generate'],key='cloud_operation_' + attempt_id)
                 instructions = st.text_area('Shot change instructions',max_chars=2000,key='cloud_instructions_' + attempt_id)
                 extension = st.number_input('Extension seconds',min_value=3,max_value=10,value=3,key='cloud_extension_' + attempt_id) if operation == 'extend' else 3
                 st.caption('Extended candidates preserve the parent. Inspect output and select a trim window that fits the existing planned shot; no automatic timeline extension.')
@@ -133,8 +153,8 @@ def cloud_production(api):
             if shot['status'] in {'needs_reconciliation','download_failed'}:
                 notes = st.text_input('Provider usage inspection notes',max_chars=500,key='cloud_notes_' + attempt_id)
                 remote = st.text_input('Interaction ID found (optional)',max_chars=200,key='cloud_remote_' + attempt_id)
-                checked = st.checkbox('I inspected Google usage and accept any prior charge',key='cloud_reconciled_' + attempt_id)
-                close_attempt = st.checkbox('Close this attempt locally; this does not cancel or refund Google generation',key='cloud_close_' + attempt_id)
+                checked = st.checkbox('I inspected provider usage and accept any prior charge',key='cloud_reconciled_' + attempt_id)
+                close_attempt = st.checkbox('Close this attempt locally; this does not cancel or refund provider generation',key='cloud_close_' + attempt_id)
                 if st.button('Record reconciliation without resubmitting',key='cloud_reconcile_' + attempt_id,disabled=not checked or not notes.strip()):
                     try: api.cloud(f'videos/{current_id}/shots/{attempt_id}/reconcile',{'notes':notes,'confirmed':True,'interaction_id':remote or None,'close_attempt':close_attempt}); st.rerun()
                     except ContentAPIError as error: st.error(str(error))

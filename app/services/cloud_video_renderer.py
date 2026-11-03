@@ -152,10 +152,10 @@ class CloudVideoRenderer:
             # Preview image is extracted from real footage, never a text fallback.
             run(['ffmpeg', '-y', '-v', 'error', '-i', str(output), '-frames:v', '1', str(output_dir / f'scene_{scene.scene_number}.png')])
             scenes.append({'scene_number': scene.scene_number, 'status': 'available', 'duration': scene.duration_seconds,
-                'asset_type': 'generated_video', 'model': 'gemini-omni-1.1-flash',
+                'asset_type': 'generated_video', 'model': self.config.video_model,
                 'license': 'AI-generated; provider terms and human rights review apply',
-                'attribution': 'Google Gemini Omni; user-provided references where selected',
-                'source_url': 'https://aistudio.google.com/docs/omni',
+                'attribution': ('Powered by Runway' if self.config.video_provider == 'runway' else 'Google Gemini Omni') + '; permission-confirmed user images where selected',
+                'source_url': 'https://runwayml.com' if self.config.video_provider == 'runway' else 'https://aistudio.google.com/docs/omni',
                 'caption_timing': 'estimated phrase timing; manually verify speech alignment', 'captions': timing})
             rendered.append(output)
         joined = output_dir / 'joined_final.mp4'

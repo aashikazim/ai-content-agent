@@ -32,6 +32,8 @@ class QuoteRequest(BaseModel):
     model_config = ConfigDict(extra='forbid')
     script_attempt_id: UUID
     reference_ids: list[UUID] | None = Field(default=None, max_length=3)
+    start_image_reference_id: UUID | None = None
+    shot_image_reference_ids: dict[int, UUID] | None = Field(default=None, max_length=12)
 
 
 class PaidSubmission(BaseModel):
@@ -60,7 +62,16 @@ def reference_image(reference_id: UUID):
 
 @router.post('/video-quotes')
 def video_quote(body: QuoteRequest, principal=Depends(require_session)):
-    return invoke(lambda: service().quote(str(body.script_attempt_id), principal['username'], body.reference_ids))
+    options = {key: getattr(body, key) for key in ('start_image_reference_id', 'shot_image_reference_ids') if key in body.model_fields_set}
+    return invoke(lambda: service().quote(str(body.script_attempt_id), principal['username'], body.reference_ids,
+        **options))
+
+
+@router.get('/runway/credits')
+def runway_credits():
+    from app.models.generation_config import GenerationConfig
+    from app.services.runway_video_service import RunwayVideoService
+    return invoke(lambda: RunwayVideoService(GenerationConfig(video_provider='runway', video_model='gen4.5')).check_model())
 
 
 @router.post('/videos', status_code=202)

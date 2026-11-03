@@ -261,6 +261,20 @@ describe('private studio', () => {
     })).toBeDisabled();
     expect(mutations()).toHaveLength(0);
   });
+  it('allows a manually authorized Facebook retry only after separate live confirmation', async () => {
+    state=overview({publications:[{publication_id:'attempt-1',job_id:'approved-1',platform:'facebook',status:'retry_authorized',platform_video_id:null,created_at:job.created_at}]});
+    const user=await openPage('Publishing');
+    await user.click(screen.getByRole('button',{name:/Facebook Page Reels/}));
+    await screen.findByText(/A manually inspected Facebook retry is authorized/);
+    expect(mutations()).toHaveLength(0);
+    await user.click(screen.getByRole('button',{name:'Live upload'}));
+    await user.click(screen.getByRole('checkbox',{name:/I confirm this approved video/}));
+    await user.click(screen.getByRole('button',{name:'Review upload'}));
+    expect(mutations()).toHaveLength(0);
+    await user.click(within(screen.getByRole('dialog')).getByRole('button',{name:'Authorize upload'}));
+    await waitFor(()=>expect(mutations().filter(([url])=>url.endsWith('/publish'))).toHaveLength(1));
+    expect(JSON.parse(mutations().find(([url])=>url.endsWith('/publish'))[1].body)).toEqual({platform:'facebook',dry_run:false,confirmed:true});
+  });
   it('does not retry an uncertain upload and blocks a second request after navigation', async () => {
     const previous = handler.getMockImplementation();
     handler.mockImplementation(async (url, options) => url.endsWith('/publish') && JSON.parse(options.body).dry_run === false ? response({

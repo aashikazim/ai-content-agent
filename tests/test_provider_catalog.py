@@ -11,7 +11,7 @@ from app.services.provider_catalog import (
 
 
 def test_catalog_does_not_claim_model_or_account_access(monkeypatch):
-    for name in ("OPENAI_API_KEY", "GEMINI_API_KEY", "KLING_API_KEY"):
+    for name in ("OPENAI_API_KEY", "GEMINI_API_KEY", "KLING_API_KEY", "RUNWAYML_API_SECRET"):
         monkeypatch.delenv(name, raising=False)
     catalog = get_catalog()
     assert catalog["phase"] == 6
@@ -29,8 +29,8 @@ def test_catalog_does_not_claim_model_or_account_access(monkeypatch):
 
 
 def test_catalog_exposes_only_credential_presence(monkeypatch):
-    secrets = ["dummy-openai-secret", "dummy-google-secret", "dummy-kling-secret"]
-    for name, secret in zip(("OPENAI_API_KEY", "GEMINI_API_KEY", "KLING_API_KEY"), secrets):
+    secrets = ["dummy-openai-secret", "dummy-google-secret", "dummy-kling-secret", "dummy-runway-secret"]
+    for name, secret in zip(("OPENAI_API_KEY", "GEMINI_API_KEY", "KLING_API_KEY", "RUNWAYML_API_SECRET"), secrets):
         monkeypatch.setenv(name, secret)
     catalog = get_catalog()
     providers = catalog["script_providers"][1:] + catalog["video_providers"][1:]
@@ -39,7 +39,7 @@ def test_catalog_exposes_only_credential_presence(monkeypatch):
     assert providers[0]["account_access"] == "unverified"
     assert all(provider["implemented"] is True for provider in providers[1:])
     assert all(provider["executable"] is True for provider in providers[1:])
-    assert [item["id"] for item in catalog["video_providers"]] == ["local", "google"]
+    assert [item["id"] for item in catalog["video_providers"]] == ["local", "google", "runway"]
     serialized = json.dumps(catalog)
     assert all(secret not in serialized for secret in secrets)
 

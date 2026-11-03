@@ -35,7 +35,7 @@ def generation_api(tmp_path, monkeypatch):
     monkeypatch.setenv("CONTENT_API_KEY", "generation-test-key")
     monkeypatch.setenv("OLLAMA_MODEL", "qwen3:8b")
     monkeypatch.setenv("IMAGE_MODEL_ID", "stable-diffusion-v1-5/stable-diffusion-v1-5")
-    for name in ("OPENAI_API_KEY", "GEMINI_API_KEY", "KLING_API_KEY"):
+    for name in ("OPENAI_API_KEY", "GEMINI_API_KEY", "KLING_API_KEY", "RUNWAYML_API_SECRET"):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setattr(routes, "DB_PATH", str(db_path))
     monkeypatch.setattr(
@@ -87,8 +87,8 @@ def test_generation_reads_require_authentication(generation_api, path):
 
 def test_catalog_distinguishes_credentials_adapter_and_model_access(generation_api, monkeypatch):
     api = generation_api
-    dummy_secrets = ["dummy-openai-private-value", "dummy-gemini-private-value", "dummy-kling-private-value"]
-    for name, value in zip(("OPENAI_API_KEY", "GEMINI_API_KEY", "KLING_API_KEY"), dummy_secrets):
+    dummy_secrets = ["dummy-openai-private-value", "dummy-gemini-private-value", "dummy-kling-private-value", "dummy-runway-private-value"]
+    for name, value in zip(("OPENAI_API_KEY", "GEMINI_API_KEY", "KLING_API_KEY", "RUNWAYML_API_SECRET"), dummy_secrets):
         monkeypatch.setenv(name, value)
     response = api.client.get("/api/v1/generation/catalog", headers=api.api_headers)
     assert response.status_code == 200
@@ -226,21 +226,24 @@ def test_conflicting_legacy_and_nested_image_modes_are_rejected(generation_api):
 @pytest.mark.parametrize("changes", [
     {"video_provider": "google", "video_model": GOOGLE_MODEL, "fps": 24},
     {"video_provider": "kling", "video_model": KLING_MODEL},
+    {"video_provider": "runway", "video_model": "gen4.5"},
 ])
 def test_cloud_models_never_queue_or_execute_even_with_credentials_and_confirmation(generation_api, monkeypatch, changes):
     api = generation_api
-    for name in ("OPENAI_API_KEY", "GEMINI_API_KEY", "KLING_API_KEY"):
+    for name in ("OPENAI_API_KEY", "GEMINI_API_KEY", "KLING_API_KEY", "RUNWAYML_API_SECRET"):
         monkeypatch.setenv(name, "dummy-key-for-guard-test")
     config = configuration(**changes, paid_generation_confirmed=True)
     response = api.client.post("/api/v1/generation/preflight", headers=api.api_headers,
                                json={"configuration": config})
     assert response.status_code == 200
-    assert response.json()["executable"] is (changes["video_provider"] == "google")
+    assert response.json()["executable"] is (changes["video_provider"] in {"google", "runway"})
     assert response.json()["paid_request"] is False
+    if changes['video_provider'] in {'google', 'runway'}:
+        assert response.json()['submission_route'] == 'script_then_video_quote'
     response = api.client.post("/api/v1/jobs", headers=api.api_headers,
                                json={"generation_config": config})
     assert response.status_code == 422
-    assert ("completed script" if changes["video_provider"] == "google" else "retired") in response.json()["detail"]
+    assert ("completed script" if changes["video_provider"] in {"google", "runway"} else "retired") in response.json()["detail"]
     assert_no_generation(api)
 
 

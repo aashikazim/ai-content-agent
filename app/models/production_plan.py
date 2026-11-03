@@ -27,7 +27,7 @@ class PlannedShot(BaseModel):
     model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
     shot_number: int = Field(ge=1, le=12)
     scene_number: int = Field(ge=1, le=12)
-    duration_seconds: int = Field(ge=3, le=10, strict=True)
+    duration_seconds: int = Field(ge=2, le=30, strict=True)
     action: str = Field(min_length=1, max_length=1500)
     camera: str = Field(min_length=1, max_length=500)
     spoken_text: str = Field(default="", max_length=1500)
@@ -95,13 +95,19 @@ class ProductionPlan(BaseModel):
             raise ValueError("The script exceeds the selected scene limit")
         if NarrationService().validate_plan(self.content_plan):
             raise ValueError("The script exceeds scene narration word budgets; request a shorter revision")
-        if config.video_provider == "google":
+        if config.video_provider in {"google", "runway"}:
+            if config.video_provider == "runway":
+                from app.services.runway_models import validate
+                for shot in self.shots:
+                    validate(config, shot.duration_seconds)
+            elif any(not 3 <= shot.duration_seconds <= 10 for shot in self.shots):
+                raise ValueError("Gemini shots must be 3–10 seconds")
             if self.content_type == "animated_comedy" and not self.characters:
                 raise ValueError("Animated character video requires at least one designed character")
             if config.narration == "model_audio" and any(NarrationService().count_words(shot.spoken_text) > NarrationService().max_words(shot.duration_seconds) for shot in self.shots):
                 raise ValueError("Shot dialogue exceeds its spoken word budget")
             if not self.shots:
-                raise ValueError("Gemini video needs a shot plan; request a script revision with 3–10-second shots")
+                raise ValueError("Cloud video needs a shot plan; request a script revision with model-supported shots")
             if len(self.shots) > config.max_shots:
                 raise ValueError("The shot plan exceeds the selected shot limit")
         return self

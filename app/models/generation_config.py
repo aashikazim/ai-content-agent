@@ -26,8 +26,11 @@ class GenerationConfig(BaseModel):
         default_factory=lambda: os.getenv("OLLAMA_MODEL", "qwen3:8b"),
         min_length=1, max_length=200,
     )
-    video_provider: Literal["local", "google", "kling"] = "local"
+    video_provider: Literal["local", "google", "kling", "runway"] = "local"
     video_model: str = Field(default="local-pipeline", min_length=1, max_length=200)
+    video_input_mode: Literal["text", "image"] = "text"
+    start_image_reference_id: UUID | None = None
+    shot_image_reference_ids: dict[int, UUID] = Field(default_factory=dict, max_length=12)
     image_mode: Literal["text", "diffusion"] = "text"
     image_model: str = Field(
         default_factory=lambda: os.getenv("IMAGE_MODEL_ID", DEFAULT_IMAGE_MODEL),
@@ -61,6 +64,8 @@ class GenerationConfig(BaseModel):
 
     @model_validator(mode="after")
     def validate_reference_ids(self):
+        if any(not 1 <= key <= 12 for key in self.shot_image_reference_ids):
+            raise ValueError("Shot image keys must be shot numbers 1–12")
         if len(set(self.character_reference_ids)) != len(self.character_reference_ids):
             raise ValueError("Character reference IDs must be unique")
         return self

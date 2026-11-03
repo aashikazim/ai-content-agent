@@ -32,7 +32,12 @@ def test_missing_motion_audio_and_wrong_duration_block_review(tmp_path):
     with pytest.raises(MediaValidationError,match='shorter'): validate_clip(path,8)
 
 
-def test_actual_cloud_clip_assembly_has_captions_audio_and_correct_output(tmp_path):
+@pytest.mark.parametrize('provider,model,narration', [
+    ('google', 'gemini-omni-1.1-flash', 'model_audio'),
+    ('runway', 'kling3.0_standard', 'model_audio'),
+    ('runway', 'gen4.5', 'local_tts'),
+])
+def test_actual_cloud_clip_assembly_has_captions_audio_and_correct_output(tmp_path, provider, model, narration):
     data=cloud_production().model_dump(mode='json')
     data['content_plan']['scenes'][1]['duration_seconds']=15
     data['shots']=data['shots'][:2]+[
@@ -40,6 +45,7 @@ def test_actual_cloud_clip_assembly_has_captions_audio_and_correct_output(tmp_pa
         {**data['shots'][3],'duration_seconds':7,'spoken_text':''}]
     production=ProductionPlan.model_validate(data)
     config=GenerationConfig(video_provider='google',video_model='gemini-omni-1.1-flash',fps=24,duration_seconds=30,resolution='720p',narration='model_audio',captions='timed')
+    config = config.model_copy(update={'video_provider': provider, 'video_model': model, 'narration': narration})
     production.validate_configuration(config)
     clips={}
     for duration in (7,8):
@@ -51,6 +57,9 @@ def test_actual_cloud_clip_assembly_has_captions_audio_and_correct_output(tmp_pa
     assert abs(quality['duration_seconds']-30)<.3
     manifest=json.loads((output.parent/'manifest.json').read_text())
     assert manifest['scenes'][0]['asset_type']=='generated_video'
+    assert manifest['scenes'][0]['model'] == model
+    if provider == 'runway':
+        assert manifest['scenes'][0]['attribution'].startswith('Powered by Runway')
     assert 'estimated' in manifest['scenes'][0]['caption_timing']
     assert (output.parent/'scene_1.png').is_file()
     assert (output.parent/'captions_1.ass').is_file()

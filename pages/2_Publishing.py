@@ -106,7 +106,9 @@ existing = storage.get_by_job(
     platform
 )
 
-if existing:
+if existing and existing['platform'] == 'facebook' and existing['status'] == 'retry_authorized' and not existing.get('platform_video_id'):
+    st.info('A manually inspected Facebook retry is authorized. Uploading still requires your separate publishing action below.')
+elif existing:
     st.warning(
         "A publication attempt already exists. "
         f"Status: {existing['status']}. "

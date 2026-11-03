@@ -116,7 +116,7 @@ class ContentWorkflow:
             "discovering"
         )
 
-        if (state.get("generation_config") or {}).get("video_provider") == "google":
+        if (state.get("generation_config") or {}).get("video_provider") in {"google", "runway"}:
             return {"videos": []}
 
         category = state["category"]
@@ -149,7 +149,7 @@ class ContentWorkflow:
             "planning"
         )
 
-        if (state.get("generation_config") or {}).get("video_provider") == "google":
+        if (state.get("generation_config") or {}).get("video_provider") in {"google", "runway"}:
             return {"plan_id": self.jobs.get_job(state["job_id"])["plan_id"]}
 
         configuration = state.get("generation_config")
@@ -202,7 +202,7 @@ class ContentWorkflow:
             "rendering"
         )
 
-        if (state.get("generation_config") or {}).get("video_provider") == "google":
+        if (state.get("generation_config") or {}).get("video_provider") in {"google", "runway"}:
             from app.services.cloud_video_service import CloudVideoService
             service = CloudVideoService(self.jobs.db_path)
             production_id = service.production_id_for_job(state["job_id"])

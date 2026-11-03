@@ -1,4 +1,6 @@
 
+import json
+import re
 import sqlite3
 import uuid
 from datetime import datetime, timezone
@@ -234,4 +236,46 @@ class PublishingStorage:
                 now
             ))
 
+        return publication_id
+
+    def authorize_retry(self, publication_id, *, confirmed_not_uploaded=False, notes="", actor="local-admin"):
+        """Record a human's inspection; never contact a publisher.
+
+        Only a Facebook attempt without a saved remote ID can be released.
+        A separate manual publish action must consume this authorization.
+        """
+        if confirmed_not_uploaded is not True or not isinstance(notes, str) or not notes.strip() or len(notes) > 1000:
+            raise ValueError("Confirm that no Facebook video was uploaded and provide inspection notes (1–1000 characters)")
+        now = datetime.now(timezone.utc).isoformat()
+        with self.connect() as conn:
+            conn.execute('BEGIN IMMEDIATE')
+            row = conn.execute('SELECT * FROM publications WHERE publication_id=?', (publication_id,)).fetchone()
+            if not row:
+                raise ValueError('Publication not found')
+            if row['platform'] != 'facebook' or row['status'] != 'needs_reconciliation' or row['platform_video_id']:
+                raise ValueError('Retry authorization requires a Facebook attempt needing reconciliation with no remote video ID; inspect remote state instead')
+            # Preserve the previous failure before a new attempt overwrites the
+            # current status/error. Do not copy signed URLs or auth headers.
+            error = re.sub(r'https?://\S+', '[URL redacted]', row['error'] or '')
+            error = re.sub(r'(?i)\b(?:Bearer|OAuth)\s+\S+', '[authorization redacted]', error)
+            details = json.dumps({'actor': actor, 'notes': notes.strip(), 'previous_status': row['status'],
+                'previous_error': error[:1000], 'previous_attempt_started_at': row['attempt_started_at']})
+            conn.execute("UPDATE publications SET status='retry_authorized',updated_at=? WHERE publication_id=?", (now, publication_id))
+            conn.execute('INSERT INTO publication_events (publication_id,event_type,details,created_at) VALUES (?,?,?,?)',
+                (publication_id, 'retry_authorized', details, now))
+        return self.get(publication_id)
+
+    def reserve_authorized_retry(self, publication_id):
+        """Atomically consume a human authorization once, preserving uniqueness."""
+        now = datetime.now(timezone.utc).isoformat()
+        with self.connect() as conn:
+            conn.execute('BEGIN IMMEDIATE')
+            changed = conn.execute("""UPDATE publications SET status='pending',error=NULL,
+                attempt_started_at=?,updated_at=?,external_status=NULL,last_checked_at=NULL
+                WHERE publication_id=? AND platform='facebook' AND status='retry_authorized'
+                AND platform_video_id IS NULL""", (now, now, publication_id))
+            if changed.rowcount != 1:
+                raise ValueError('Retry authorization is missing or already consumed; duplicate upload prevented')
+            conn.execute('INSERT INTO publication_events (publication_id,event_type,details,created_at) VALUES (?,?,?,?)',
+                (publication_id, 'retry_reserved', 'Manual publish action consumed one retry authorization', now))
         return publication_id

@@ -213,7 +213,7 @@ def generation_preflight(body: ConfigurationRequest):
         "configuration": config.model_dump(mode="json"),
         "estimated_cost_usd": None,
         "paid_request": False,
-        "submission_route": "script_then_video_quote" if config.video_provider == "google" else "local_job",
+        "submission_route": "script_then_video_quote" if config.video_provider in {"google", "runway"} else "local_job",
     }
 
 

@@ -28,7 +28,7 @@ Open **http://127.0.0.1:8000** and sign in. For a remote DGX, forward port 8000 
 
 - **Overview:** actual job counts, recent content, publication status, and latest collected analytics. Empty states are shown when no data exists.
 - **Review Queue:** authenticated video playback, scene images, script/storyboard, available provenance, and an explicit review checklist. Approval and rejection only update review state.
-- **Publishing:** approved videos, destination selection, dry-run validation by default, a separate live-upload confirmation, and publication history. Any existing job/platform attempt blocks another upload; uncertain outcomes require reconciliation.
+- **Publishing:** approved videos, destination selection, dry-run validation by default, a separate live-upload confirmation, and publication history. An existing job/platform attempt blocks another upload; an inspected Facebook failure can be manually reauthorized using the command below. Uncertain outcomes require reconciliation.
 
 There is exactly one locally configured admin account, with no public registration or web password-reset endpoint. To replace its credentials and revoke all sessions, run `python scripts/setup_admin.py --username admin --reset`. Credentials are scrypt-hashed in the gitignored `credentials/admin.json`, written with owner-only permissions. Session tokens are random and stored hashed in additive SQLite auth tables. Browser cookies are HttpOnly, SameSite=Strict, expire after 12 hours by default, and use Secure over HTTPS. Failed sign-ins are throttled. State-changing browser requests require a session-bound CSRF token; the UI handles it automatically.
 
@@ -566,3 +566,119 @@ Phase 2 verification: **303 Python tests passed**, including fresh/existing SQLi
 Phases 3/4/6 verification on Linux ARM64 (`aarch64`), Python 3.12.3: **337 Python tests passed**, **27 frontend tests passed**, production build passed, and `git diff --check` passed. Checks cover fresh/existing SQLite migration, structured shots and references, cost confirmation/quote consumption, concurrent duplicate-POST prevention, ambiguous outcomes, safe retrieval and local closure, queued-shot discard/continuation, version preservation and trim selection, usage/thinking cost estimates, manual quality/review/publishing boundaries, actual 30-second FFmpeg caption/audio assembly and complete decoding. Chrome fixture QA also exercised a five-shot mocked-provider production through real local FFmpeg assembly, desktop/mobile playback, quality-check handoff, manual approval without publication, publishing dry run and cancellation. No paid calls, uploads, model downloads, public deployments or commits were performed. Live Gemini account access, background behavior, duration adherence, extension semantics and output quality remain unverified; all provider success responses in tests were mocked.
 
 Confirmation UI follow-up:337Python tests and28frontend tests passed; production build and desktop/mobile browser checks passed. Mouse and keyboard checks verified that video-cost consent enables confirmation, withdrawing consent disables it, and checking consent alone sends no video-generation request. The running local dashboard serves the rebuilt authorization UI; existing browser tabs need a hard refresh.
+
+## Runway Dev API video production
+
+Runway is an additional paid video provider. Local generation and Google Gemini remain available. Script selection stays independent: choose local Ollama or OpenAI, then choose Runway and its exact video model. Runway-hosted Kling models use **only `RUNWAYML_API_SECRET`**; the retired direct Kling provider remains disabled.
+
+Install the updated Python requirements in the existing Python 3.12 environment, add this optional server-side setting to your private `.env`, and restart the API/dashboard:
+
+```dotenv
+RUNWAYML_API_SECRET=
+```
+
+Keep the real value local. Rebuild the React studio with `cd frontend && npm run build` when using FastAPI's served dashboard. No new login, API-key entry in the browser, CUDA package, or model-weight download is required.
+
+1. In **Create Video**, choose Runway, the exact model, and text-to-video or image-to-video. Gen-4 Turbo requires image input. Gen-4 models and Kling 2.5 require local narration; audio-capable Kling models support model audio. Dialogue dramas/animated character stories require model audio. Shorts, short dramas, animated stories and unverified news illustrations use the existing 30–60-second production/12-shot limits. Long-form drama remains planned.
+2. Generate/review the script in the existing workshop. OpenAI script fees have their own separate confirmation. Changing provider/model later requires a new script or revision so its shot lengths match that model. Existing completed scripts retain their original provider/model snapshot.
+3. In **Cloud video production**, choose that completed script. Upload permission-confirmed images in the existing reference registry. For scene frames, use a descriptive ID such as `scene_1`; character identity images use actual script character IDs. Image-to-video accepts individual shot frames and an optional explicitly shared start frame. Character portraits are never silently treated as starting scenes. Gen-4 models do not support independent character-image references; use composed start frames instead. O3 image mode and Kling 4 support separate character images.
+4. Use **Check Runway credits** or **Estimate Runway video cost**. Estimation performs a read-only account lookup, never a test generation. If the account role cannot read credits, the balance is shown as unavailable. A known insufficient balance blocks the quote. Balance is a snapshot, not a reservation or model-access guarantee.
+5. Review the model, shot count, credits, USD estimate, prior reserved production estimate and data-transfer notice. Check **Authorize Runway video cost**, then click **Confirm paid video generation**. Settings, credentials, credit lookup and estimates never authorize spending. Quotes expire after ten minutes, bind exact settings/images and the signed-in administrator, and can be consumed once.
+6. The existing background workflow submits each authorized task once and saves its generation ID immediately. React polls existing tasks at five-second intervals; Streamlit provides safe status refresh. Download/assembly recovery retrieves the existing task instead of generating again. Technical media checks require real moving clips, valid duration/audio and decodable output. Local FFmpeg normalizes aspect/resolution/FPS, adds local narration when selected, captions and loudness normalization.
+7. Regenerate an individual shot using **Create another candidate** and a fresh quote/confirmation. Previous clips remain available; manually select a replacement. Runway regeneration supports extra shot instructions; Gemini-specific edit/extension operations are disabled for Runway. Model-specific video-to-video editing is not implemented here.
+8. Inspect the assembled video, captions, continuity, claims, rights and provider terms, then send it to manual review. **Approval and publishing remain two separate manual actions.** No new publishing route or automatic upload is introduced.
+
+### Runway capability and standard-cost matrix
+
+Verified against the [official API specification](https://docs.dev.runwayml.com/openapi.json), [models](https://docs.dev.runwayml.com/guides/models/) and [pricing](https://docs.dev.runwayml.com/guides/pricing/) on 2026-11-03. One credit costs $0.01. Rates may change; model/account access is unverified until used.
+
+| Model ID | Input | Shot seconds | Native output | Audio | Credits/second |
+|---|---|---|---|---|---|
+| `gen4_turbo` | Image | 2–10 integer | 720p | No | 5 |
+| `gen4.5` | Text/image | 2–10 integer | 720p | No | 12 |
+| `kling2.5_turbo_pro` | Text/image | 5 or 10 | 1080p | No | 12 |
+| `kling3.0_standard` | Text/image | 3–15 integer | 720p | Optional | 9 silent / 13 audio |
+| `kling3.0_pro` | Text/image | 3–15 integer | 1080p | Optional | 12 silent / 17 audio |
+| `kling3.0_4k` | Text/image | 3–15 integer | 4K | Optional | 43 |
+| `klingO3_standard` | Text/image | 3–15 integer | 720p | Optional | 13 |
+| `klingO3_pro` | Text/image | 3–15 integer | 1080p | Optional | 17 |
+| `klingO3_4k` | Text/image | 3–15 integer | 4K | Optional | 43 |
+| `kling_4` | Text/image | 3–30 integer | 720p/1080p | Always generated | 15.7 / 23.5 |
+
+Portrait/landscape are supported. Square Gen-4.5 requires image input. Model-specific native ratios are mapped by the adapter; Kling 2.5 image mode and Kling 4 image mode follow input framing. FFmpeg crops/scales to the chosen final dimensions. 4K models still incur 4K charges when final output is 720p/1080p; 720p models are upscaled for 1080p. FPS is normalized locally. Kling 4 always generates audio even if local narration replaces it. O3 rates do not decrease when audio is disabled. Kling 4 estimates use rounded-up **list prices**, with no assumption about the promotion ending November 30, 2026.
+
+Cost controls reserve all quoted shot estimates plus the script estimate against `max_cost_usd`, including failed/uncertain attempts and replacement candidates. Only never-submitted cancelled shots release their estimate. Runway-reported numerical credit usage is retained and converted to a calculated USD cost; actual invoice cost remains unknown. Estimates are not provider-enforced invoice caps. No automatic model routing, fallback to another paid model, top-up or uncertain-request retry occurs.
+
+### Runway implementation map and persistence
+
+| File | Responsibility |
+|---|---|
+| `app/services/runway_models.py` | Curated model capabilities, native ratios, duration/audio validation and credit estimates |
+| `app/services/runway_video_service.py` | Official `runwayml==5.24.0` SDK, retries disabled, task creation/retrieval, credit lookup, bounded credential-free media download |
+| `app/models/generation_config.py`, `production_plan.py` | Runway selection, input mode, shared/per-shot frame IDs and model-specific screenplay validation |
+| `app/services/provider_catalog.py`, `script_generation_service.py` | Independent providers, manual model choices, duration-aware planning prompts and saved script configuration metadata |
+| `app/services/cloud_video_service.py`, `cloud_video_storage.py` | Existing quote/confirmation/version/reconciliation workflow, provider dispatch, IDs/credits and polling persistence |
+| `app/api/cloud_routes.py`, `job_service.py`, `app/workflows/content_workflow.py` | Session/CSRF API integration and authorized background work through the existing LangGraph graph |
+| `app/services/cloud_video_renderer.py` | Existing FFmpeg assembly with accurate provider/model provenance and selected-image metadata |
+| `pages/3_Create_Video.py`, `streamlit_cloud_production.py`, `frontend/src/GenerationForm.jsx`, `CloudProduction.jsx`, `App.jsx` | Model/input selection, frame assignment, credit/cost consent, shot review and provider-aware labels in both interfaces |
+| `tests/test_runway_video.py`, `test_cloud_video_api.py`, `test_create_video_page.py`, `test_cloud_media.py`, frontend tests | Mocked SDK requests, authorization/recovery/migrations and real synthetic-clip FFmpeg checks |
+
+No replacement database or schema reset is needed. Initialization adds `provider` (legacy default `google`), `model` and `last_polled_at` to `video_shots` idempotently. Existing `interaction_id` stores either provider's remote generation ID; responses additionally expose it as `generation_id`. Existing quote, production, version, lease and event tables are reused. Configuration snapshots hold model/input/frame selections. Signed media URLs and API secrets are never stored in SQLite or returned to the browser.
+
+New read-only endpoint: authenticated `GET /api/v1/generation/runway/credits`. Existing video-quote requests optionally accept `start_image_reference_id` and `shot_image_reference_ids` (shot-number-to-reference-UUID mapping). Existing create/refresh/regeneration/review endpoints keep their contracts.
+
+Timeouts, ambiguous HTTP responses and interrupted submissions remain `needs_reconciliation`; inspect Runway task/billing records and record a human decision before another attempt. If an output link expires, safely retrieve its saved task ID for a fresh link. Downloads accept HTTPS public Runway/CloudFront CDN destinations only, without API credentials or redirects, and enforce the existing 100MB clip bound. A new unsupported CDN fails visibly and requires adapter review, never regeneration. Crashed in-process workers still require manual recovery; no new distributed worker is claimed.
+
+DGX Spark: the SDK installs as an OS-independent Python package and introduces no CUDA dependencies. FFmpeg remains local CPU assembly. Network transfer, 4K decode memory/time and model access/rate limits remain practical constraints; no live paid generation was used during automated verification. An existing environment `pip check` reports `nvidia-cusparselt-cu13 0.8.1` unsupported on this platform; this integration does not change that GPU package.
+
+## Manually authorize a failed Facebook upload again
+
+A status edit by itself does not release an existing publication. After verifying that the Facebook attempt did **not** upload/publish a video, use the local authorization command. This is intended for an inspected rejected upload start (for example an expired Page token), not for blindly repeating a timeout or a possibly accepted upload.
+
+```bash
+cd ~/Github/ai-content-agent
+source .venv/bin/activate
+python scripts/authorize_publication_retry.py \
+  --publication-id PUBLICATION_ID \
+  --confirmed-not-uploaded \
+  --notes "Meta rejected the upload start; no video was accepted. Page token has been replaced."
+```
+
+The command changes `needs_reconciliation` to `retry_authorized` and records inspection evidence and the previous failure in publication events. It requires a Facebook attempt without a saved remote video ID. It preserves the publication ID, old events and `(job_id, platform)` uniqueness; it never uploads or changes job approval. If any remote video ID exists or acceptance is uncertain, inspect remote state instead.
+
+Restart FastAPI after updating code or `.env` credentials, and hard-refresh the React Publishing page (or rerun Streamlit). Select the approved job and Facebook, review the video/metadata, select Live upload, then explicitly authorize the upload. A dry run does not consume authorization. One live action atomically consumes it; concurrent/duplicate actions stay blocked, and any uncertain result needs a new human inspection. YouTube retry behavior is unchanged. No database row or history needs to be deleted.
+
+## Facebook token type and lifetime
+
+`FACEBOOK_PAGE_ACCESS_TOKEN` must contain a **PAGE** token acting as `FACEBOOK_PAGE_ID`. A Graph API Explorer **USER** token can read a Page while still expiring within hours; copying it into the Page-token setting does not change its type or lifetime. Likewise, deriving a Page token directly from that short-lived user token may retain its short expiry.
+
+Inspect the current credential locally without printing its value or uploading:
+
+```bash
+python scripts/facebook_auth.py
+```
+
+The command reports token type, identity match, expiry timestamps and missing required permissions. Token debugging may require the same app's credentials. To provision a longer-lived Page token, set these additional private server-side settings from your Meta app's Settings → Basic:
+
+```dotenv
+FACEBOOK_APP_ID=
+FACEBOOK_APP_SECRET=
+```
+
+The App Secret is different from a Client Token, App access token and user/Page access token. Use a user token issued for this exact app, granting `pages_show_list`, `pages_read_engagement` and `pages_manage_posts`, with content-creation access to the selected Page. A token exchange cannot grant missing Page access or permissions. No advertising permissions are requested by this helper.
+
+```bash
+# Prompts for a valid user token with input hidden; never put it on the command line.
+python scripts/facebook_auth.py --provision
+
+# Initial repair only: use the existing setting if it currently holds a USER token.
+python scripts/facebook_auth.py --provision --use-configured-user-token
+```
+
+This explicitly exchanges the user token using `fb_exchange_token`, derives the configured Page's token, verifies its app/type/scopes/expiry and `/me` identity, and saves **only** the verified Page token into `.env`. It rejects short-lived results rather than claiming they are permanent. Other settings are preserved, the replacement is atomic with owner-only permissions, and no credentials are printed, backed up or stored in SQLite. There are no automatic retries or publishing calls. Restart FastAPI/Streamlit after a successful save.
+
+An `expires_at` of `0` means Meta reports no scheduled token expiry; it is not a guarantee against revocation. Review `data_access_expires_at` as well. App removal, security/password changes, loss of Page access or revoked permissions can still require Facebook Login again. A user token that is already expired must first be renewed through Facebook Login/Graph API Explorer for the same app.
+
+If Meta returns `Error validating client secret`, replace `FACEBOOK_APP_SECRET` with the correct App Secret from that app. Changing Page IDs or publication status cannot fix it. Issuing a token does not authorize an upload; an existing failed publication still needs the separate human retry and live-publishing confirmation described above.
+
+References: [Meta access-token guide](https://developers.facebook.com/documentation/facebook-login/guides/access-tokens), [long-lived-token guide](https://developers.facebook.com/docs/facebook-login/guides/access-tokens/get-long-lived/), and [Meta's Reels collection](https://www.postman.com/meta/facebook/request/rgkn91u/1-create-reel). The local identity/type/expiry/permission findings were verified against live read-only Graph API responses; Meta documentation pages may rate-limit automated access. Private developer-console settings are not accessible through this repository.
