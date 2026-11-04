@@ -94,7 +94,7 @@ def test_catalog_distinguishes_credentials_adapter_and_model_access(generation_a
     assert response.status_code == 200
     catalog = response.json()
     assert catalog["phase"] == 6
-    providers = catalog["script_providers"][1:] + catalog["video_providers"][1:]
+    providers = catalog["script_providers"][1:] + [p for p in catalog["video_providers"] if p['id'] in {'google','runway'}]
     assert all(item["configured"] is True for item in providers)
     assert providers[0]["implemented"] is True
     assert providers[0]["executable"] is True

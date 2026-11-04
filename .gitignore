@@ -12,6 +12,7 @@ data/*.db-*
 AGENTS.md
 CODEX_BACKLOG.md
 PROJECT_CONTEXT.md
+CODEX_PROGRESS.md
 # Generated content plans
 data/plans/*.json
 data/videos/
@@ -29,3 +30,7 @@ frontend/test-results/
 
 # Private character reference images
 data/character_references/
+
+# Isolated cinematic runtimes, checkpoints, task state and private motion inputs
+data/local_cinematic/
+data/driving_references/

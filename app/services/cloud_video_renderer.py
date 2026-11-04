@@ -163,8 +163,8 @@ class CloudVideoRenderer:
             scenes.append({'scene_number': scene.scene_number, 'status': 'available', 'duration': scene.duration_seconds,
                 'asset_type': 'generated_video', 'model': next(iter(scene_models)) if len(scene_models)==1 else 'multiple models', 'models':sorted(scene_models),
                 'license': 'AI-generated; provider terms and human rights review apply',
-                'attribution': ('Powered by Runway' if self.config.video_provider == 'runway' else 'Google Gemini Omni') + '; permission-confirmed user images where selected',
-                'source_url': 'https://runwayml.com' if self.config.video_provider == 'runway' else 'https://aistudio.google.com/docs/omni',
+                'attribution': (self.config.video_model + '; Lightricks / Wan-Video' if self.config.video_provider == 'local_cinematic' else 'Powered by Runway' if self.config.video_provider == 'runway' else 'Google Gemini Omni') + '; permission-confirmed user images where selected',
+                'source_url': 'https://github.com/Lightricks/LTX-2' if self.config.video_provider == 'local_cinematic' else 'https://runwayml.com' if self.config.video_provider == 'runway' else 'https://aistudio.google.com/docs/omni',
                 'caption_timing': 'estimated phrase timing; manually verify speech alignment', 'captions': timing})
             rendered.append(output)
         joined = output_dir / 'joined_final.mp4'

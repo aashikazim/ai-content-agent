@@ -8,6 +8,7 @@ import os
 
 from app.models.generation_config import DEFAULT_IMAGE_MODEL, GenerationConfig
 from app.services.runway_models import EDIT_MODELS, catalog_models, validate as validate_runway
+from app.services import local_cinematic_models
 
 
 VERIFIED_ON = "2026-11-03"
@@ -124,6 +125,11 @@ def get_catalog() -> dict:
              "account_access": "unverified", "status": "account_access_unverified",
              "reason": "Official Runway SDK; model-specific text/image inputs, explicit credit confirmation and no paid retries. Native resolution varies; FFmpeg assembles locally.",
              "models": catalog_models()},
+            {"id": "local_cinematic", "label": "Local cinematic · LTX / Wan / hybrid",
+             "configured": any(item['executable'] for item in local_cinematic_models.catalog_models()), "implemented": True,
+             "executable": any(item['executable'] for item in local_cinematic_models.catalog_models()), "status": "runtime_check_required",
+             "reason": "Isolated GPU workers; exact LTX-2.5 and Wan-Animate-2 distilled checkpoints. Setup and model access required. LTX uses a512px short edge; Wan uses384px with49-frame windows, locally upscaled. No still-image fallback. Wan needs one reference actor and driving motion; hybrid retains LTX audio.",
+             "models": local_cinematic_models.catalog_models()},
         ],
         "image_models": [{"id": _local_image_model(), "label": _local_image_model(),
                           "status": "model_access_unverified", "implemented": True}],
@@ -153,11 +159,13 @@ def validate_for_draft(config: GenerationConfig) -> None:
     if config.script_model not in expected_scripts:
         raise ValueError("Unknown script model for the selected provider; choose a model from the catalogue")
     expected_video = {"local": "local-pipeline", "google": GOOGLE_MODEL, "kling": KLING_MODEL}
-    if config.video_provider == 'runway':
+    if config.video_provider == 'local_cinematic':
+        local_cinematic_models.validate(config)
+    elif config.video_provider == 'runway':
         validate_runway(config)
     elif config.video_model != expected_video[config.video_provider]:
         raise ValueError("Unknown video model for the selected provider; choose a model from the catalogue")
-    if config.video_provider != 'runway' and (config.video_input_mode != 'text' or config.start_image_reference_id or config.shot_image_reference_ids):
+    if config.video_provider not in {'runway', 'local_cinematic'} and (config.video_input_mode != 'text' or config.start_image_reference_id or config.shot_image_reference_ids):
         raise ValueError('Start-frame input controls are available for Runway only')
     if config.image_model != _local_image_model():
         raise ValueError("Unknown image model; choose the configured local model from the catalogue")
@@ -181,11 +189,12 @@ def validate_for_script(config: GenerationConfig) -> None:
     if config.script_provider == "openai" and not os.getenv("OPENAI_API_KEY"):
         raise ValueError("OPENAI_API_KEY is not configured; choose local Ollama or configure the key on the server")
     if config.content_type == 'long_drama':
-        if config.video_provider != 'runway' or not 120 <= config.duration_seconds <= 1200:
-            raise ValueError('Long-form drama needs Runway and a 120–1200-second target')
+        if config.video_provider not in {'runway', 'local_cinematic'} or not 120 <= config.duration_seconds <= 1200:
+            raise ValueError('Long-form drama needs Runway or local cinematic and a 120–1200-second target')
         from math import ceil
         from app.services.runway_models import capabilities
-        if config.max_shots < ceil(config.duration_seconds / capabilities(config)['clip_duration_seconds']['max']):
+        maximum = 10 if config.video_provider == 'local_cinematic' else capabilities(config)['clip_duration_seconds']['max']
+        if config.max_shots < ceil(config.duration_seconds / maximum):
             raise ValueError('Increase Maximum shots so the selected model can cover the full drama duration')
     elif config.duration_seconds > 60:
         raise ValueError("Short-form script generation supports 30–60 seconds; select long drama with Runway for longer stories")
@@ -199,7 +208,7 @@ def validate_for_execution(config: GenerationConfig) -> None:
     """Validate a renderable job; paid authorization is also enforced in JobService."""
     config = GenerationConfig.model_validate(config)
     validate_for_script(config)
-    if config.video_provider in {"google", "runway"}:
+    if config.video_provider in {"google", "runway", "local_cinematic"}:
         validate_for_cloud_video(config)
         return
     if config.content_type != "realistic_short":
@@ -218,6 +227,11 @@ def validate_for_execution(config: GenerationConfig) -> None:
 
 def validate_for_cloud_video(config: GenerationConfig) -> None:
     validate_for_script(config)
+    if config.video_provider == 'local_cinematic':
+        # Kept behind the existing tracked-production entry point. Runtime
+        # readiness is checked by its adapter at quote/submission time.
+        local_cinematic_models.validate(config)
+        return
     if config.video_provider not in {"google", "runway"}:
         raise ValueError("Select Google Gemini or Runway explicitly for cloud video")
     credential = 'RUNWAYML_API_SECRET' if config.video_provider == 'runway' else 'GEMINI_API_KEY'

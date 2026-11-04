@@ -101,8 +101,13 @@ class ProductionPlan(BaseModel):
             raise ValueError("The script exceeds the selected scene limit")
         if NarrationService().validate_plan(self.content_plan):
             raise ValueError("The script exceeds scene narration word budgets; request a shorter revision")
-        if config.video_provider in {"google", "runway"}:
-            if config.video_provider == "runway":
+        if config.video_provider in {"google", "runway", "local_cinematic"}:
+            if config.video_provider == 'local_cinematic':
+                from app.services.local_cinematic_models import validate, route
+                for shot in self.shots:
+                    validate(config, shot.duration_seconds)
+                    route(config.video_model, shot.model_dump())
+            elif config.video_provider == "runway":
                 from app.services.runway_models import validate
                 for shot in self.shots:
                     validate(config, shot.duration_seconds)

@@ -196,7 +196,7 @@ class StreamlitAdminClient:
 
     def media_bytes(self, path):
         import re
-        if not re.fullmatch(r'/(?:generation/references/[a-f0-9-]{36}/image|generation/videos/[a-f0-9-]{36}/shots/[a-f0-9-]{36}/video|jobs/[a-f0-9-]{36}/video)', path):
+        if not re.fullmatch(r'/(?:generation/references/[a-f0-9-]{36}/image|generation/driving-references/[a-f0-9-]{36}/video|generation/videos/[a-f0-9-]{36}/shots/[a-f0-9-]{36}/video|jobs/[a-f0-9-]{36}/video)', path):
             raise ContentAPIError('Invalid preview media request')
         try:
             with self.session.get(self.api_url + '/api/v1' + path, timeout=(3.05,60), allow_redirects=False, stream=True) as response:

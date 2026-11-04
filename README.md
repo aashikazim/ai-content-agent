@@ -1,10 +1,29 @@
 # AI Content Agent
 
-**A local-first, agent-based pipeline for generating, reviewing, and publishing short-form videos.**
+**A local-first, agent-based pipeline for generating short videos and long-form dramas, with manual review and publishing.**
 
-AI Content Agent discovers YouTube trends, develops original short-form content plans, generates narration and visual scenes, renders vertical MP4 videos, and presents them for **manual review and manual publishing**. The project runs on an NVIDIA DGX Spark and combines Python services, a LangGraph workflow, FastAPI, SQLite, and a Streamlit dashboard.
+AI Content Agent develops original screenplays from trends, topics or supplied scripts, generates illustrated scenes or moving footage, and assembles MP4 videos with narration and captions for **manual review and manual publishing**. The project runs on NVIDIA DGX Spark and combines Python 3.12, LangGraph, FastAPI, SQLite, local FFmpeg, React and Streamlit.
 
 The primary interface is now a local **React Content Studio** served by FastAPI. One administrator signs in with a username and password; browser review and publishing do not require entering API keys. The existing Streamlit pages and command-line tools remain available.
+
+Local moving footage now has a separate **Local cinematic** provider: LTX-2.5, Wan-Animate-2, and hybrid shots. See [local cinematic setup](#local-cinematic-video-ltx-25-and-wan-animate-2) for isolated dependencies, checkpoint access, verified limits and GPU smoke checks. The original local illustrated renderer remains available.
+
+## Current implementation — 2026-11-04
+
+| Area | Current status |
+| --- | --- |
+| Script, character and shot planning | Independently selectable local Ollama or explicitly authorized OpenAI; validated screenplays, dialogue and revision history |
+| Moving video | Local LTX-2.5 / Wan-Animate-2 / hybrid; Google Gemini; Runway with manually selected supported models |
+| Legacy local rendering | Existing text-card/diffusion-image renderer retained as an illustrated preview |
+| Duration | Short productions: 30–60 seconds, up to 12 shots. Long drama: 120–1200 seconds, up to 240 shots, with Runway or Local cinematic |
+| Editing and regeneration | Immutable shot candidates and manual replacement; Gemini edits/extensions and Runway visual edits/final-frame continuation; local cinematic regeneration only |
+| Verified local output | Real LTX/Wan/hybrid clips, a 30-second drama and an 18-shot **180-second image-conditioned film**; real regeneration preserved all originals |
+| Latest automated checks | **501 Python tests**, **37 frontend tests**, production frontend build and whitespace checks passed |
+| Review and publishing | Technical checks → human quality review → manual approval → separate manual publishing; uncertain uploads are never automatically retried |
+
+The 3-minute validation film is 1280×720 at 24 fps with native audio and local captions. It remains `awaiting_quality_review`; the separate regeneration demo remains `awaiting_shot_selection`. Validation databases/media are private and separate from normal application jobs. Four-minute assembly has synthetic-media coverage; an actual 240-second neural film was not rendered. Speech accuracy, acting, identity/voice continuity and caption timing still need human inspection.
+
+Start with the [dashboard/login](#web-dashboard-and-admin-login), then choose [Local cinematic](#local-cinematic-video-ltx-25-and-wan-animate-2), [Google Gemini](#google-video-production), or [Runway](#runway-dev-api-video-production). [CODEX_PROGRESS.md](CODEX_PROGRESS.md) records installed paths, completed artifacts, recovery details and remaining manual steps. Older verification counts below are milestone history, not the latest test result. No live paid-provider or publication trial was performed during the local cinematic validation.
 
 ## Web dashboard and admin login
 
@@ -40,11 +59,13 @@ Existing scheduler requests still use `CONTENT_API_KEY`. Manual API review now r
 
 YouTube resumable uploads continue through acknowledged chunks, but failed chunk requests are not automatically retried, including HTTP 5xx responses. The existing reservation remains for reconciliation; a new upload attempt requires human intervention.
 
-> **Current status (November 2026):** Days 1–7 have been implemented in stages. Core services and automated tests are in place, but the complete scheduled-generation-to-publication workflow still requires end-to-end verification. Visual quality is a known limitation: the existing `text` mode creates text-based scenes, while `diffusion` mode depends on local image-model setup. Cloud moving footage, model audio and versioned shot regeneration are now implemented as described above; local stock acquisition and neural local narration remain future work. Facebook Page authorization is not yet confirmed working.
+> **Verification boundary:** Days 1–7 and subsequent provider/dashboard/cinematic extensions are implemented. Real local video generation and assembly are verified; paid providers and uploads are mocked in automated tests. Facebook token provisioning was verified on 2026-11-03, but permissions remain revocable and a successful live upload is not claimed. Unattended deployment, account-specific cloud quality/billing, licensed stock acquisition and neural local TTS require separate work or manual validation.
+
+<a id="google-video-production"></a>
 
 ## OpenAI planning, Gemini video and local assembly — Phases 1–4 and 6
 
-The local React studio and Streamlit **Create Video** page now share the provider, script, character-reference and video-production APIs. Kling and Phase 5 are retired at the user's request; old stored selections remain readable and cannot execute. Local models remain an explicit option. A cloud failure never silently selects local models or text cards.
+This section describes the Google production path. React and Streamlit **Create Video** share the provider, script, character-reference and tracked-production APIs. The **direct Kling provider** remains retired; Runway-hosted Kling models are available through Runway. Local cinematic and illustrated renderers remain explicit selections. A cloud failure never silently selects another provider or text cards.
 
 | Stage | Implementation |
 | --- | --- |
@@ -54,7 +75,7 @@ The local React studio and Streamlit **Create Video** page now share the provide
 | Final assembly | Local FFmpeg on DGX Spark: trim, normalize, captions, audio, MP4 validation |
 | Local fallback | Existing Ollama, text/diffusion scenes, local narration and renderer; select it explicitly |
 
-Current cloud productions are **30–60 seconds**, up to **12 shots**, with individual initial shots of **3–10 seconds**, at **24 fps** and **9:16 or 16:9**. Native generation is 720p; selecting 1080p upscales locally. Long drama remains visible but unimplemented. News remains an **unverified draft** with AI illustrative scenes; there is no automated fact checker or licensed stock-footage integration. Local previews keep their previous aspect-ratio/resolution/frame-rate behavior, including legacy requests and existing jobs.
+Google productions are **30–60 seconds**, up to **12 shots**, with individual initial shots of **3–10 seconds**, at **24 fps** and **9:16 or 16:9**. Native generation is 720p; selecting 1080p upscales locally. Long drama is implemented for Runway and Local cinematic, not Google. News remains an **unverified draft** with AI illustrative scenes; there is no automated fact checker or licensed stock-footage integration. Local illustrated previews preserve their legacy behavior.
 
 ### Start a cloud production
 
@@ -65,7 +86,7 @@ OPENAI_API_KEY=
 GEMINI_API_KEY=
 ```
 
-Rebuild the React app after source updates using `cd frontend && npm run build`. No new Python dependencies, CUDA packages, model weights or GPU downloads are needed. Use the existing single admin login; browser generation/review/publishing does not ask for API keys.
+Rebuild React after source updates using `cd frontend && npm run build`. This Google adapter needs no local video-model installation. Runway uses its SDK; Local cinematic has a separate isolated setup below. Use the existing single admin login; browser generation/review/publishing does not ask for API keys.
 
 1. In **Create video**, choose the content type/style/duration, **OpenAI** script provider and **Google Gemini** video provider. Choose 24 fps. Drama/animated character dialogue requires **Gemini model audio**; local TTS is a single narrator. Timed captions use phrase timings described below.
 2. In **Script workshop**, explicitly check model access/estimate the script cost, authorize one request, then generate. The validated draft includes original narration, fictional character IDs/descriptions, dialogue, and camera/action shots whose durations cover each scene. A revision creates a separate draft and preserves the original.
@@ -74,7 +95,7 @@ Rebuild the React app after source updates using `cd frontend && npm run build`.
 5. Inspect selected clips and the final MP4. Confirm appearance/clothing/actions/voices, caption/audio timing, factual labeling and media rights, then **Send video to manual review**. Only technically valid, complete footage can reach this step. This does not approve the video.
 6. In **Review Queue**, approve/reject explicitly. An approved video still requires a separate manual action in **Publishing**; dry run/private defaults and duplicate-upload reconciliation are preserved.
 
-The completed script's generation settings are immutable. To change its content type/duration/audio/output configuration, create a revised script with the desired settings; uploading/selecting references afterward is supported. Local video requests still use the existing `/jobs` path. Cloud jobs reuse the LangGraph execution path with discovery and paid planning skipped because their completed draft and shot authorizations are already persisted.
+The completed script's generation settings are immutable. To change content type/duration/audio/output configuration, create a revised script; uploading/selecting references afterward is supported. Only the legacy illustrated provider uses direct `/jobs` rendering. Google, Runway and Local cinematic use a completed screenplay and the tracked video quote/confirmation path, reusing LangGraph with discovery/planning skipped because the draft and authorization already exist.
 
 ### References, regeneration, edits and extensions
 
@@ -106,17 +127,18 @@ Provider failures now retain recognized Google `errors[]` codes with safe guidan
 
 Every raw selected clip must decode, match planned duration, contain measurable motion and include audio when requested. Missing/invalid assets block review. FFmpeg normalizes geometry/frame rate, handles explicit trim windows, adds model audio or local narration, renders readable captions, normalizes loudness and validates the complete H.264/AAC MP4. Captions use **estimated phrase timing**, not speech recognition/forced alignment; human synchronization checks remain mandatory. Technical motion checks do not establish acting quality, correct speech, factual accuracy or identity continuity.
 
-Neural local TTS, automatic word-aligned captions, automated semantic continuity checks, durable workers, verified news research, licensed stock acquisition, arbitrary uploaded-video editing and 5–20-minute productions remain future work. The existing local TTS/image pipeline is preserved without claiming a quality upgrade to its models.
+Neural local TTS, word-aligned captions/ASR, automated semantic continuity checks, a durable distributed task queue, verified news research, licensed stock acquisition and arbitrary uploaded-video editing remain future work. Long-plan limits extend through 20 minutes; real neural verification currently reaches 3 minutes, so larger productions still need measured account/hardware/quality validation. Existing illustrated image/TTS models are preserved.
 
 ### API additions
 
-All cloud endpoints require the existing admin session; mutations require CSRF. No cloud endpoint approves or publishes content.
+Tracked-production, reference and paid-authorization endpoints require the admin session; browser mutations require CSRF. Shared catalog/preflight/configuration routes also support the existing scoped generation credential where implemented. That credential cannot authorize paid work, approve or publish. No production endpoint approves or publishes content.
 
 | Endpoint under `/api/v1/generation` | Purpose |
 | --- | --- |
 | `catalog`, `preflight`, `configurations` | Provider metadata, validation, saved settings |
 | `openai-models`, `script-quotes`, `scripts` | Explicit script access/cost checks, draft generation/history |
 | `references`, `references/{id}/image` | Local rights-confirmed reference upload/list and authenticated images |
+| `driving-references`, `driving-references/{id}/video` | Private, permission-confirmed motion MP4 upload/list/preview for Wan-only shots |
 | `POST video-quotes` | Estimate a completed draft's shots and selected references |
 | `POST videos`, `GET videos`, `GET videos/{id}` | Explicit creation and production history/status |
 | `POST videos/{id}/refresh` | Background retrieval/download/local assembly; never a paid submission |
@@ -132,34 +154,40 @@ The OpenAI adapter uses [Responses](https://developers.openai.com/api/reference/
 ## Features
 
 - **Trend discovery:** Retrieve popular YouTube videos by region and category; rank candidates using recency, engagement, and view velocity.
-- **Content planning:** Use a local Ollama-hosted language model to generate original titles, descriptions, hashtags, narration, and scene-by-scene storyboards.
-- **Video rendering:** Generate visual assets, synthesize speech, and combine scenes into vertical MP4 files with FFmpeg. Supports `text` and experimental `diffusion` image modes.
+- **Content planning:** Choose Ollama or OpenAI independently of the video provider; validate scripts, character profiles, dialogue, shot timing, titles and revisions.
+- **Video rendering:** Choose illustrated local previews, LTX/Wan/hybrid moving footage, Google or Runway. FFmpeg assembles provider-dependent aspect ratios, 720p/1080p delivery, native/local narration and captions. Local cinematic delivery is explicitly upscaled from its smaller working profile.
 - **Workflow orchestration:** Coordinate trend discovery, content generation, and rendering through LangGraph, with jobs persisted in SQLite.
-- **Human approval:** Review generated videos and content plans in Streamlit. Approval and rejection are explicit actions; approval **does not** publish a video.
+- **Human approval:** React and Streamlit provide video/script/provenance review. Moving productions require human quality checks before approval; approval **does not** publish a video.
 - **Manual publishing:** Upload approved videos through YouTube and Facebook integrations, subject to configured credentials and platform permissions. YouTube uploads default to `private`.
 - **Publication tracking:** Reserve publishing attempts to prevent duplicate uploads, record publication events, and reconcile uncertain outcomes without automatically re-uploading.
 - **Analytics:** Collect available YouTube performance metrics, store historical snapshots, and inspect results in a Streamlit dashboard.
 - **Scheduling:** Request new generation jobs on a daily schedule using APScheduler. Scheduled generation never invokes approval or publishing.
-- **Testing:** Unit tests cover trend ranking, storage, content plans, narration, workflows, publishing safety, analytics, scheduler requests, and review decisions.
+- **Testing:** Automated provider/API/safety tests, real synthetic-media FFmpeg checks, frontend tests, and separately recorded real local-model GPU validation.
 
 ## Workflow
 
 ```mermaid
 flowchart TD
-    A[APScheduler or manual job request] --> B[Trend discovery and ranking]
-    B --> C[Local LLM content plan]
-    C --> D[Visuals and narration]
-    D --> E[FFmpeg vertical MP4]
-    E --> F[SQLite job: pending_review]
-    F --> G{Manual review in Streamlit}
-    G -->|Reject| H[Rejected; no publishing]
-    G -->|Approve| I[Approved; not published]
-    I --> J{Separate manual Publish action}
-    J -->|YouTube| K[Private upload by default]
-    J -->|Facebook| L[Page Reel upload, if authorized]
-    K --> M[Reconciliation and analytics]
-    L --> M
-    M --> N[Streamlit performance dashboard]
+    A[React or Streamlit: admin session] --> B[Ollama or OpenAI script workshop]
+    B --> C[Validated screenplay, characters and shots]
+    C --> D[Explicit production confirmation]
+    D --> E{Selected video provider}
+    E --> F[LTX, Wan or hybrid: isolated local workers]
+    E --> G[Google or Runway: tracked paid requests]
+    F --> H[SQLite generation IDs, clips and versions]
+    G --> H
+    H --> I[Local FFmpeg, captions, audio and technical checks]
+    I --> J[awaiting_quality_review]
+    J --> K[Human quality checks]
+    K --> L[pending_review]
+    M[Legacy CLI or scheduler] --> N[LangGraph illustrated local workflow]
+    N --> L
+    L --> O{Manual approve or reject}
+    O -->|Reject| P[Rejected]
+    O -->|Approve| Q[Approved; no upload]
+    Q --> R[Separate manual Publish confirmation]
+    R --> S[YouTube private upload or permitted Facebook Reel]
+    S --> T[Publication reconciliation and analytics]
 ```
 
 **Safety rule:** The scheduler is allowed to create content-generation jobs only. Neither the scheduler nor the generation workflow is authorized to approve or publish content. An approved video still requires a separate manual publishing action.
@@ -171,10 +199,13 @@ flowchart TD
 | Language | Python 3.12 |
 | Orchestration | LangGraph |
 | Local language model | Ollama, Qwen3 8B (configurable) |
+| Cloud script model | OpenAI Responses API; independent script selection |
 | API | FastAPI, Uvicorn |
 | Storage | SQLite; JSON content plans |
 | Image generation | Text-card fallback; optional Stable Diffusion pipeline |
-| Narration | `espeak-ng`-based local TTS (current baseline) |
+| Local moving video | LTX-2.5 / Wan-Animate-2 / hybrid in an isolated ARM64 CUDA environment |
+| Cloud moving video | Google Gemini REST API; official Runway Python SDK |
+| Narration | Native model audio where supported; existing `espeak-ng` local TTS |
 | Video processing | FFmpeg / FFprobe |
 | Scheduler | APScheduler 3.x |
 | Dashboard | Streamlit, pandas, Plotly |
@@ -186,7 +217,7 @@ flowchart TD
 
 ## Project layout
 
-The following is a **representative layout** of the modules introduced through Day 7. Consult the repository itself for the exact current filenames and interfaces.
+Main current modules are shown below. Generated assets, credentials and optional model environments are excluded from Git.
 
 ```text
 ai-content-agent/
@@ -196,10 +227,15 @@ ai-content-agent/
 │   │   ├── content_agent.py
 │   │   └── video_agent.py
 │   ├── api/
-│   │   └── routes.py
+│   │   ├── routes.py
+│   │   ├── admin_routes.py
+│   │   └── cloud_routes.py         # Shared tracked moving-video API
 │   ├── models/
 │   │   ├── video.py
-│   │   └── content_plan.py
+│   │   ├── content_plan.py
+│   │   ├── long_content_plan.py
+│   │   ├── generation_config.py
+│   │   └── production_plan.py
 │   ├── services/
 │   │   ├── youtube_service.py
 │   │   ├── ranking_service.py
@@ -220,19 +256,41 @@ ai-content-agent/
 │   │   ├── analytics_storage.py
 │   │   ├── feedback_service.py
 │   │   ├── review_dashboard_service.py
-│   │   └── scheduler_service.py
+│   │   ├── scheduler_service.py
+│   │   ├── script_generation_service.py
+│   │   ├── openai_script_service.py
+│   │   ├── provider_catalog.py
+│   │   ├── cloud_video_service.py
+│   │   ├── cloud_video_storage.py
+│   │   ├── cloud_video_renderer.py
+│   │   ├── gemini_video_service.py
+│   │   ├── runway_video_service.py
+│   │   ├── runway_models.py
+│   │   ├── character_reference_service.py
+│   │   ├── driving_reference_service.py
+│   │   ├── local_cinematic_models.py
+│   │   ├── local_cinematic_service.py
+│   │   └── streamlit_cloud_production.py
+│   ├── workers/
+│   │   └── local_cinematic_worker.py # Separate model interpreter
 │   └── workflows/
 │       └── content_workflow.py
 ├── pages/
 │   ├── 1_Review_Queue.py
-│   └── 2_Publishing.py
+│   ├── 2_Publishing.py
+│   └── 3_Create_Video.py
 ├── frontend/                    # React studio; npm ci && npm run build
 ├── scripts/
 │   ├── youtube_auth.py
 │   ├── migrate_day6.py
 │   ├── reconcile_publications.py
 │   ├── run_scheduled_job.py
-│   └── setup_admin.py            # Local-only account setup/reset
+│   ├── setup_admin.py            # Local-only account setup/reset
+│   ├── facebook_auth.py
+│   ├── authorize_publication_retry.py
+│   ├── setup_local_cinematic.py
+│   ├── local_cinematic_constraints.txt
+│   └── smoke_local_cinematic.py
 ├── tests/
 ├── data/                        # Generated local data; do not commit secrets
 ├── credentials/                 # OAuth files; gitignored
@@ -246,7 +304,8 @@ ai-content-agent/
 ├── scheduler.py                 # Daily generation scheduler
 ├── requirements.txt
 ├── .env.example
-└── README.md
+├── README.md
+└── CODEX_PROGRESS.md             # Current handoff and recovery evidence
 ```
 
 ## Prerequisites
@@ -259,6 +318,8 @@ ai-content-agent/
 - YouTube Data API credentials for trend discovery and YouTube OAuth credentials for publishing.
 - Optional: Meta Page access token and Page ID for Facebook Reels.
 - Optional: compatible PyTorch, Diffusers, and model weights for image generation.
+- React studio builds require Node.js22.12+; the built UI is served by Python.
+- Optional Local cinematic: separate ARM64/CUDA runtime, accepted LTX access terms and pinned checkpoints; see the dedicated setup/profile/storage requirements below.
 
 GPU model compatibility and performance depend on the installed CUDA/PyTorch versions. Image-generation support should be verified on the target machine before enabling unattended jobs.
 
@@ -272,8 +333,8 @@ cd ai-content-agent
 # Use the main branch
 git switch main
 
-# Create and activate a virtual environment
-python3 -m venv .venv
+# Fresh setup only: create and activate the application environment
+python3.12 -m venv .venv
 source .venv/bin/activate
 
 # Install Python dependencies
@@ -292,12 +353,14 @@ ollama pull qwen3:8b
 ollama list
 ```
 
+For an existing working checkout, preserve `.env`, databases, media, `.venv` and `data/local_cinematic`. Do not repeat environment installation or checkpoint downloads merely because the editor/session restarted. Back up the database, use the recorded recovery state, rebuild changed frontend source and restart the application when ready. Optional cinematic dependencies belong only in their separate environment.
+
 ## Configuration
 
-Create `.env` from the example if present:
+Create `.env` for a fresh setup without overwriting an existing file:
 
 ```bash
-cp .env.example .env
+test -f .env || cp .env.example .env
 ```
 
 Review the existing `.env.example` and application code for exact variable names. The configuration below shows the variables introduced or used during development; not every value is required for every command.
@@ -313,8 +376,7 @@ CONTENT_API_URL=http://127.0.0.1:8000
 DATABASE_PATH=data/trends.db
 ANALYTICS_DATABASE_PATH=data/trends.db
 
-# Publishing safety
-PUBLISH_DRY_RUN=true
+# Publishing privacy; real uploads require an explicit live action
 YOUTUBE_PRIVACY_STATUS=private
 
 # YouTube OAuth
@@ -342,7 +404,7 @@ SCHEDULER_VIDEO_LIMIT=5
 SCHEDULER_IMAGE_MODE=text
 ```
 
-The trend-discovery service also requires the YouTube API key expected by your current `youtube_service.py`; set it using the variable name defined in that module. Other model-specific environment variables may be needed by `llm_service.py` and `image_service.py`.
+Trend discovery uses `YOUTUBE_API_KEY`. Model settings include `OLLAMA_HOST`, `OLLAMA_MODEL`, `CONTENT_LANGUAGE`, `IMAGE_MODEL_ID` and `TTS_VOICE`; `.env.example` lists current defaults. `OPENAI_API_KEY`, `GEMINI_API_KEY` and `RUNWAYML_API_SECRET` are optional independent cloud credentials. Local cinematic generation needs its isolated checkpoints/runtime, not a video-provider API key. The CLI's `--live` flag or a separately confirmed browser action controls real publication; no `PUBLISH_DRY_RUN` environment switch is read by the current implementation.
 
 Generate independent API keys with:
 
@@ -355,6 +417,8 @@ python -c 'import secrets; print(secrets.token_urlsafe(32))'
 ## Usage
 
 Run commands from the repository root with the virtual environment active.
+
+The discovery/plan/render commands below describe the retained **illustrated local pipeline**. For LTX/Wan/hybrid or paid moving footage, use **Create Video → Script workshop → tracked production confirmation** instead; direct `render.py` and scheduler requests do not select those new models.
 
 ### 1. Discover trends
 
@@ -376,9 +440,8 @@ The content plan includes a title, description, hashtags, hook, narration, and s
 
 ```bash
 sqlite3 -header -column data/trends.db '
-SELECT job_id, plan_id, status, video_path
-FROM jobs
-WHERE plan_id IS NOT NULL
+SELECT plan_id, title, status, json_path
+FROM content_plans
 ORDER BY created_at DESC
 LIMIT 10;
 '
@@ -404,7 +467,7 @@ uvicorn server:app --host 127.0.0.1 --port 8000
 
 API documentation is typically available at `http://127.0.0.1:8000/docs`.
 
-The API includes job creation, status, plan/video retrieval, and review endpoints under `/api/v1/jobs`. Publishing endpoints may also be present; check `/docs` for the exact request models and authorization headers in the current version.
+The API includes job creation, status, plan/video retrieval and manual review under `/api/v1/jobs`; manual publishing uses `POST /api/v1/jobs/{job_id}/publish`. Tracked moving-video endpoints live under `/api/v1/generation`. `/docs` exposes current request schemas. Browser actions use the admin session; supported non-browser clients use distinct generation/review/publish credentials.
 
 ### 6. Start the dashboard
 
@@ -421,6 +484,7 @@ Dashboard pages:
 - **Analytics:** Inspect job counts, publication status, available platform metrics, and historical snapshots.
 - **Review Queue:** Preview an MP4, inspect title/description/hashtags and scene narration, then explicitly approve or reject.
 - **Publishing:** Select an approved job, choose a platform, perform a dry run, and explicitly authorize a live upload.
+- **Create Video:** Select independent script/video providers, generate/revise a screenplay, assign references, authorize production, preview clips, regenerate candidates and hand technically valid output to manual review.
 
 Approval changes the job's state to `approved`; **it never starts an upload**.
 
@@ -443,7 +507,7 @@ LIMIT 10;
 '
 ```
 
-**Integration checkpoint:** Confirm the FastAPI job endpoint starts the existing LangGraph execution path and does not merely insert a queued record. Do not enable scheduled operation until this is verified.
+`POST /api/v1/jobs` schedules LangGraph through FastAPI background tasks; the scheduler sends the supported `limit` field. API/workflow/active-job behavior has automated coverage. Validate credentials and one real scheduled-to-review run on the deployment host before enabling unattended scheduling; no live timer-driven run is claimed by the local-model tests.
 
 ### 8. Enable daily generation
 
@@ -480,7 +544,9 @@ Reconciliation checks external status without blindly repeating uploads. Analyti
 
 ## Database and state management
 
-SQLite is used for trend records, content plans, generation jobs, publication attempts/events, and analytics snapshots. Typical job states include `pending_review`, `approved`, and `rejected`, alongside workflow-specific processing and failure states. Publication states are tracked separately because a completed upload may still be private, processing, or awaiting reconciliation.
+SQLite stores trends, plans, jobs, admin sessions, script attempts/quotes, video productions, versioned shots/events/leases, image/driving references, publications and analytics. Moving productions reach `technical_ready` with the job `awaiting_quality_review`; human checks then allow `pending_review`, followed by manual `approved`/`rejected`. Replacement candidates can require `awaiting_shot_selection`. Publication states are separate because an upload may be private, processing or uncertain.
+
+The cinematic migration adds `driving_references`; existing jobs/content/auth/publication history remain. Seeds/motion assignments use configuration JSON. SQLite retains generation IDs; private filesystem state retains worker heartbeats, diagnostics and clips. Detached workers can outlive API/editor processes, but host/service termination may still stop them and coordination is not a durable distributed queue. Inspect actual heartbeat/IDs/status rather than assuming a worker is alive or re-submitting an uncertain attempt.
 
 For an existing Day 5 database, the Day 6 migration introduced publication fields such as `attempt_started_at`, `external_status`, and `last_checked_at`, plus the `publication_events` table. The updated `PublishingStorage.initialize()` also adds missing schema elements for new test databases.
 
@@ -499,40 +565,45 @@ Do not delete `data/trends.db` as a troubleshooting shortcut: it contains job an
 python -m pytest tests/ -v
 
 # Targeted checks
+python -m pytest tests/test_local_cinematic.py tests/test_cloud_media.py -q
 python -m pytest tests/test_publishing.py -v
 python -m pytest tests/test_publishing_recovery.py -v
 python -m pytest tests/test_scheduler.py -v
 python -m pytest tests/test_review_dashboard.py -v
 ```
 
-The pre-dashboard audit baseline was **45 passed**. The empty scheduler-key fallback is already fixed. New admin/dashboard tests cover authentication, CSRF, cookie-protected video playback, manual approval, publishing confirmation, duplicate prevention, and uncertain upload reconciliation. All tests use temporary credentials/databases and mock external uploads. Run the full suite for the current result.
+Latest implementation verification on **2026-11-04**: **501 Python tests passed**, **37 frontend tests passed**, the production frontend build passed and `git diff --check` passed. Recovery baseline:486Python tests; original pre-dashboard baseline:45. Automated tests use temporary data and mocked paid providers/uploads. Real FFmpeg cases cover captions/audio/motion/decoding, edits/continuation and120/192/240-second synthetic-source assembly.
+
+Real local-model GPU runs are separate from automated tests: LTX text/image generation, Wan reference animation, hybrid audio preservation, a30-second drama, a180-second/18-shot I2V film and one-shot regeneration were executed on GB10. These used private validation databases and did not approve or publish content. See the local cinematic benchmarks and `CODEX_PROGRESS.md` for artifacts and limits; documentation-only changes do not require rerunning expensive GPU tests.
 
 Original dashboard implementation verification: **124 Python tests and 8 frontend tests passed**; production frontend build passed; npm dependency audit reported zero advisories. Headless Chrome checks used a temporary SQLite database and synthetic local media to verify desktop/mobile login, decoded video playback, scene previews, approval without publishing, dry-run validation, cancellation of live confirmation, navigation, and logout. No live platform upload was tested.
 
-Tests use mocks for platform services and cannot prove that live OAuth, Meta permissions, scheduled workflow execution, GPU image generation, or remote platform publishing work end to end.
+Mocked platform tests do not establish current remote credentials, permissions, billing or live uploads. Neural tests establish measured local execution, not semantic acting/speech quality or all models/resolutions/workloads. Human quality review remains required.
 
 ## Development progress
+
+The table records the original Days1–7 foundation and its current status. Later provider/cinematic work is summarized at the top of this README.
 
 | Day | Focus | Current state |
 | --- | --- | --- |
 | 1 | YouTube discovery, ranking, SQLite | Implemented |
 | 2 | Ollama content plans and storyboard validation | Implemented |
-| 3 | Images, narration, FFmpeg MP4 rendering | Implemented; visual quality needs improvement |
-| 4 | LangGraph workflow, FastAPI, persistent jobs, review | Implemented; integration should be rechecked |
-| 5 | YouTube OAuth and Facebook Reels publishing | Implemented; Facebook authorization unresolved |
+| 3 | Images, narration, FFmpeg MP4 rendering | Illustrated renderer retained; moving-video paths and real local GPU rendering verified |
+| 4 | LangGraph workflow, FastAPI, persistent jobs, review | Implemented and regression-tested; human quality/review/publication gates |
+| 5 | YouTube OAuth and Facebook Reels publishing | Implemented; token provisioning verified November3; live access/uploads remain manual checks |
 | 6 | Analytics snapshots, dashboard, duplicate protection, reconciliation | Implemented; live platform checks still needed |
-| 7 | APScheduler, Streamlit review queue, manual publishing page | Implementation added; end-to-end verification pending |
+| 7 | APScheduler, Streamlit review queue, manual publishing page | Implemented and tested; unattended scheduler deployment still needs host validation |
 
 ## Known issues and planned improvements
 
-1. **Visual quality:** Local text cards remain a baseline. Gemini moving-clip generation and explicit asset checks are implemented; live model quality still needs manual verification. Licensed stock acquisition and improved local image models remain future work.
-2. **Narration:** Gemini model audio is selectable for cloud footage; local `espeak-ng` remains the baseline. Natural local neural TTS and forced word-aligned subtitles remain future work.
-3. **Editing:** Cloud clip normalization, trims, Gemini edit/extension candidates, phrase captions, loudness normalization and technical checks are implemented. Exact speech alignment and semantic quality assessment still require human review.
+1. **Visual quality:** LTX/Wan/hybrid moving footage is verified locally; illustrated previews remain available. Text-only identity drift and native text artifacts were observed. Scene frames/reference animation help, but acting, hands, clothing/background continuity and voice still need review. Licensed stock acquisition remains unimplemented.
+2. **Narration:** Native LTX/hybrid and supported cloud audio are available; Wan-only animation is silent and can use the local narrator. `espeak-ng` remains baseline TTS. Neural local TTS, ASR/verbatim-speech checks and forced word alignment remain future work.
+3. **Editing:** FFmpeg trims/normalization/captions/loudness, versioned regeneration, Gemini edit/extension and Runway visual edits/final-frame continuation are implemented. Local cinematic models expose regeneration, not native edit/extension endpoints.
 4. **Content research:** Improve factual grounding, originality, scene relevance, and topic selection. Review source licenses before reuse.
-5. **Review workflow:** Add controlled **Regenerate Script**, **Regenerate Images**, **Regenerate Narration**, and **Re-render Video** actions. Retain manual approval and publishing.
-6. **Facebook permissions:** Resolve the Page ID / Page access token / Graph API permissions before relying on Facebook publishing or analytics.
-7. **Scheduler reliability:** Verify that the API request starts actual generation; prevent overlapping long-running jobs; distinguish safe generation retries from uncertain publication outcomes.
-8. **Deployment:** Consider `systemd` services and health checks after single-machine end-to-end tests pass. Keep the dashboard bound to localhost or behind authenticated access.
+5. **Review workflow:** Script revisions, shot candidates, manual replacement/reassembly and quality handoff are implemented. Dedicated regeneration of legacy illustrated assets or local narration is separate future work. Approval/publishing remain manual.
+6. **Facebook permissions:** Provisioning/inspection and human-authorized retry exist. Tokens remain revocable; expiry metadata is a dated observation, not a promise of permanent access. Verify current Page permissions before live publishing/analytics.
+7. **Scheduler/recovery:** API dispatch and active-job/submission guards are implemented. An unattended timer-driven run, service supervision and durable distributed coordination are not established by these tests. Never automatically retry uncertain publishing or paid generation.
+8. **DGX performance:** The128GB pool is shared. Isolated dependencies, compiled Wan attention, hot-model residency, memory guards and deadlines are required; larger native resolutions are not verified. The3-minute LTX validation took about57minutes of summed neural time; Wan/hybrid can take about15–18minutes for5seconds.
 
 ## Security and content policy
 
@@ -545,20 +616,26 @@ Tests use mocks for platform services and cannot prove that live OAuth, Meta per
 
 ## Git workflow
 
-Development uses the **`main` branch only**:
+Development uses **`main` only**. Agents must not commit or push without explicit approval. These are owner-run review/staging commands:
 
 ```bash
 git branch --show-current
 git status
-git add README.md
+# Documentation-only example; review/stage implementation paths separately.
+git add README.md CODEX_PROGRESS.md
 git diff --cached --check
-git commit -m "docs: document AI Content Agent through Day 7"
-git push origin main
+git diff --cached --stat
 ```
+
+Commit/push only after reviewing the intended source/documentation changes. `.env`, credentials, models, generated media, databases and runtime caches stay ignored. `AGENTS.md`, `PROJECT_CONTEXT.md` and `CODEX_BACKLOG.md` are currently gitignored local handoff files; updating them does not include them in a normal `git add`. This update preserves that policy. `README.md` is tracked and `CODEX_PROGRESS.md` is available to stage.
 
 ## Project direction
 
 The next development stage focuses on **content quality**, not additional publishing automation: better scene assets, natural narration, source-aware scripting, and regeneration controls inside the manual review dashboard. The intended workflow remains **automated creation → manual review → manual publishing → analytics**.
+
+### Historical provider verification
+
+These are the results recorded at each earlier milestone. The latest result is501Python /37frontend tests and the real local-model validation described above.
 
 Phase 2 verification: **303 Python tests passed**, including fresh/existing SQLite migrations, strict script validation, cost authorization, uncertain requests, local supplied-source planning, API authorization and Streamlit interactions. **22 frontend tests passed** and the production build passed. Chrome fixture checks verified a mocked OpenAI script submission, desktop/mobile layouts, decoded video playback, manual approval without publication, publishing dry run and live-confirmation cancellation. Paid providers and uploads were mocked; a Phase 1 test rendered and decoded actual temporary FFmpeg/espeak output. These checks do not establish live model availability or improved image/TTS quality.
 
@@ -722,3 +799,125 @@ Source videos below3MB use bounded data URIs. Larger normalized clips (up to100M
 Contracts verified against the [Runway API specification](https://docs.dev.runwayml.com/openapi.json), [input requirements](https://docs.dev.runwayml.com/assets/inputs/), [pricing](https://docs.dev.runwayml.com/guides/pricing/), and [OpenAI model limits](https://developers.openai.com/api/docs/models/gpt-6.1-sol) on2026-11-03. Tests mock paid model requests and uploads. Real synthetic-media checks render/decode a two-minute fifteen-scene drama, preserve source audio during a visual edit, and join a parent plus generated-tail fixture into a longer candidate. Twenty-minute plan bounds are validated; live model quality, seamless continuity, account limits and invoice charges remain checks performed through manually authorized dashboard requests.
 
 Extension verification: **463 Python tests and34frontend tests passed**, the production build passed, and `git diff --check` passed. The baseline was435Python tests. Checks include official-SDK edit/continuation/upload payloads, source hashes, single-use quotes, cost limits, parent/version preservation, streamed review hashes, long-script budgets/timeouts, malformed historical plans, authenticated long-drama quality/review handoff, publishing guards and both UI controls. Actual FFmpeg checks decoded a120second/15scene MP4, a visual edit retaining source audio and a joined continuation. No live paid generation or publication was performed; no commit was created.
+
+## Local cinematic video: LTX-2.5 and Wan-Animate-2
+
+This section supersedes earlier statements that local generation only supports still images, and that long drama requires Runway. Existing local illustrated, Gemini and Runway features remain available. Script generation still independently uses Ollama or explicitly authorized OpenAI. Generation never approves or publishes.
+
+Recovery validation status (November4): real LTX5s T2V/audio, six-shot30s drama, Wan5s reference animation, realistic hybrid5s, LTX10s I2V and a full180s/18shot image-conditioned film pass technical checks. The hybrid retains LTX audio (waveform correlation0.99915). The3minute film is1280×720/24fps with native audio/local captions and remains awaiting manual quality review in a separate validation database. A real single-shot regeneration preserved all selected originals and left its new candidate unselected. The192/240s FFmpeg regression cases use synthetic moving sources; actual240s neural generation was not repeated. All501Python tests and37frontend tests/build pass. Text-only face drift and native text artifacts were observed; local prompts now use prose and quoted speaker turns following the [official LTX guide](https://docs.ltx.io/open-source-model/usage-guides/prompting-guide), but full continuity/speech/text inspection remains manual. `CODEX_PROGRESS.md` records exact IDs, artifacts and resume steps; completed tests/downloads need no rerun after a restart, and technical checks never approve or publish.
+
+### Verified model identities and licenses
+
+Checked against the official repositories/model cards on November 3, 2026:
+
+| Selection | Exact implementation | Inputs | Generated sound |
+|---|---|---|---|
+| `ltx-2.5` | `Lightricks/LTX-2.5`, 22B distilled transformer, matching LTX Gemma4 encoder, convolutional video VAE, audio VAE, spatial upsampler | Text or explicitly selected composed scene frame | Native LTX audio; exact words/voice consistency require inspection |
+| `wan2.2-animate-2` | `Wan-AI/Wan2.2-Animate-2-14B-Distilled-Diffusers`, ten-step distilled model | One character reference image and a permitted driving video per shot | Silent animation; existing local narration can be added |
+| `ltx-wan-hybrid` | The same two explicit checkpoints, sequential execution | LTX creates motion/audio; Wan animates the selected single-actor reference from that motion | Original LTX audio retained locally |
+
+The supplied [Wan2.2 repository](https://github.com/Wan-Video/Wan2.2) documents the older Animate model. **Animate-2 exists in the separate official [Wan-Animate-2 repository](https://github.com/Wan-Video/Wan-Animate-2)**; it is not replaced with Animate-14B. The official README's classic Diffusers snippet currently names `WanAnimate2Pipeline`, while the audited Diffusers source and checkpoint's modular index expose `WanAnimate2DistilledBlocks`/`WanAnimate2DistilledModularPipeline`. The worker uses that actual modular implementation, with local component loading and no remote code.
+
+[LTX-2.5](https://huggingface.co/Lightricks/LTX-2.5) has gated access and the [LTX-2.x Community License](https://github.com/Lightricks/LTX-2/blob/main/LICENSE-2_x). Review its revenue/commercial/distribution restrictions yourself; this is not an Apache-licensed model. Accepting Hugging Face access conditions is an owner action. [Wan-Animate-2](https://huggingface.co/Wan-AI/Wan2.2-Animate-2-14B) is released under Apache-2.0. Media rights and any third-party component terms still apply. The application does not accept terms or install alternative checkpoints automatically.
+
+### Isolated installation on DGX Spark
+
+Do **not** install the upstream Wan requirements into the app environment: its CUDA12.6/Python3.11/multi-GPU examples are not the verified GB10 setup. LTX also requires a different Transformers version from the working application. The optional installer creates `data/local_cinematic/venv`; the app's `.venv`, requirements, existing models and CUDA packages are preserved.
+
+Install `uv` in your user environment if unavailable. From the repository root, with the application environment active:
+
+```bash
+# Isolated packages only; pinned upstream source revisions and official ARM64 wheels.
+python scripts/setup_local_cinematic.py --install --diagnose
+
+# Owner: review LTX terms, grant access, then authenticate locally with a Read token.
+hf auth login
+
+# Explicit checkpoint downloads; about 71GB LTX + 46GB Wan.
+python scripts/setup_local_cinematic.py --download-ltx --accept-ltx-license
+python scripts/setup_local_cinematic.py --download-wan
+```
+
+The tested worker uses Python3.12, PyTorch2.13.0+cu132, torchvision0.28.0, torchaudio2.11.1+cu132 (its declared requirement is torch>=2.11), Transformers5.14.1 and pinned Diffusers/LTX source revisions. The installer follows Lightricks' documented cuDNN9.24 override. It avoids NATTEN/FlashAttention/decord/xformers builds and uses the supported standard attention path. Exact model/source revisions live in `local_cinematic_models.py`; checkpoint manifests verify completeness before generation. The CUDA diagnostic tests attention, matrix multiplication, FFT and audio resampling as well as imports; it does not establish model quality or successful full inference.
+
+Wan-Animate-2 specifically requires **compiled flex attention**. The worker compiles the native flex operation through a process-local Diffusers backend proxy, keeping its tensor-dependent rotary/cache preprocessing outside the compiled graph. Installed dependency files and PyTorch's module remain unchanged. Compile/runtime failures propagate without eager attention fallback. The setup diagnostic exercises this exact dispatch and compares it with causal attention on tiny GPU tensors. Compiler concurrency is limited to1. Supported component CPU offloading and VAE tiling reduce memory use. Wan uses a384px target short edge (384×672 portrait,672×384 landscape,384×384 square) and49-frame processing windows; this explicit smaller profile retains the same checkpoint and10 denoising steps. The upstream image preprocessor resolves actual dimensions from that pixel area and the reference image's aspect ratio. FFmpeg fits the result to the selected delivery aspect ratio. The hybrid runs LTX at its512px profile, then the smaller Wan pass. The first model call can take longer while kernels compile.
+
+Triton also needs a C compiler and matching Python development headers. When the system headers are missing, the installer extracts Ubuntu's ARM64 `libpython3.12-dev` package under the private runtime's `sysroot`, without sudo/system installation. To repair an existing isolated environment use `python scripts/setup_local_cinematic.py --install-headers --diagnose`. The strengthened diagnostic compiles a Triton operation as well. Inference/JIT/CUDA caches stay under the isolated runtime; the application's packages and caches are not reused as model dependencies.
+
+Official [LTX requirements](https://docs.ltx.io/open-source-model/getting-started/system-requirements) call for at least32GB GPU memory and100GB storage. Keep substantially more disk free for both checkpoint sets, caches and generated footage. GB10 has shared CPU/GPU memory; `nvidia-smi` may report memory as N/A. A passing CUDA probe does not guarantee a large shot will fit. LTX uses CPU weight offload, a512px short edge and the lighter convolutional VAE for the initial profile. Native portrait/landscape is512×896/896×512, square512×512;720p/1080p delivery is a local upscale. This is explicit, not a claim of native1080p production quality.
+
+Optional `.env` settings:
+
+```dotenv
+LOCAL_CINEMATIC_ROOT=data/local_cinematic
+# Optional custom isolated Python; otherwise ROOT/venv/bin/python is used.
+# LOCAL_CINEMATIC_PYTHON=
+DRIVING_REFERENCES_DIR=data/driving_references
+LOCAL_CINEMATIC_GPU_MEMORY_FRACTION=0.5
+LOCAL_CINEMATIC_MIN_AVAILABLE_GB=16
+LOCAL_CINEMATIC_STAGE_TIMEOUT_SECONDS=1800
+```
+
+No additional cloud video key is required. Keep HF tokens in the local Hugging Face credential store. Model weights, source clones, venvs, task state, private diagnostics, driving footage and generated media are gitignored. Download operations use the private Hub login; inference runs offline and does not inherit cloud/platform secrets.
+
+New local tasks snapshot these runtime limits. The CUDA allocator cap covers its own allocations; a separate controller monitors available host memory because DGX memory is shared and other allocations may lie outside that allocator. If the host reserve or stage deadline is reached, only that neural stage's process group is stopped, with its GPU lock held until cleanup. The attempt fails visibly and is never restarted automatically. These limits reduce resource risk; they are not an OS memory reservation. Do not run an unbounded eager Wan model on the host.
+
+### Generate, inspect and regenerate
+
+1. Restart FastAPI/Streamlit after upgrading; rebuild React with `cd frontend && npm run build`. In either **Create Video** interface select **Local cinematic**, then an exact model. Select text/image mode; Wan-only requires image mode. Keep the script provider independent.
+2. For an initial production use30seconds. Choose **Long drama** and180–240seconds for a3–4-minute screenplay after the smoke and30-second checks pass. Increase Maximum shots to cover the duration with3–10-second shots; for example,240seconds needs at least24 ten-second shots. Existing long-plan limits remain120–1200seconds/up to240shots.
+3. Use **Source: your script** to adapt a supplied screenplay, or a topic for a new one. The existing structured script workshop validates dialogue, actions, cast IDs, exact narration/timing and shot coverage. Its shared character/wardrobe/location/voice descriptions persist for the entire film. An OpenAI screenplay still needs its own paid authorization; an Ollama screenplay has no provider fee.
+4. In the production panel choose that completed screenplay. Reuse the permission-confirmed character registry. LTX image mode uses composed scene start frames selected explicitly per shot or as a shared frame; independent identity portraits are not silently treated as scene compositions. LTX text mode conditions cast appearance through the screenplay, not an independent portrait-image channel.
+5. Wan-only needs exactly one actor per shot, a matching character reference and a driving MP4 at least as long as the shot. Upload original/permitted3–10-second MP4s, at most20MB/1920px/60fps, and record rights. Input clips are hashed, motion-checked, private and quote-bound. Hybrid single-actor shots use their newly generated LTX footage instead; establishing/multi-actor shots explicitly use LTX only. Use shot/reverse-shot planning for recurring-character dialogue.
+6. Prepare the generation request and confirm local GPU work. The video provider estimate is$0; electricity/runtime are not free, and any separate OpenAI script estimate remains in the production budget. No video input is uploaded. Saved settings do not start work.
+7. Existing LangGraph/SQLite orchestration saves each local generation UUID, immutable versions and selected clips. Detached controllers serialize GPU work with a process lock. Each LTX/Wan stage runs in a separate child and fully exits before the next loads. The lock descriptor stays with an active neural child if its controller crashes. Safe refresh only inspects existing task state/downloads/assembles; it never restarts generation.
+8. Inspect stage progress, elapsed/queue time and peak memory, then preview actual clips and the FFmpeg MP4. Stage fractions are coarse milestones, not an ETA. Numerical measurements and pinned checkpoint provenance accompany the selected footage. An inactive heartbeat becomes `needs_reconciliation`; inspect the private task diagnostics before another attempt. A known failed shot can be regenerated manually; there is no automatic fallback or retry.
+9. **Regenerate this shot** creates another candidate with a version-specific deterministic seed and preserves the selected original. Select the replacement explicitly. Cloud edit/continuation remains available; these local models currently expose regeneration only. FFmpeg checks motion, duration, decoding and requested audio, then adds the existing narration/captions and normalizes the final output. Missing/still clips block review.
+10. Confirm continuity, speech/captions, rights and factual/fiction labels, then send to manual review. Approval and publishing remain separate manual actions. Long Facebook Reels remain blocked; YouTube publishing retains its private default.
+
+Native model audio does not guarantee the same voice across separately generated shots; Wan is not an audio or voice-cloning model. Identity, clothing, background, action, lip sync and speech accuracy need human inspection and selective regeneration. Character reference images should depict the desired clothing/location. Captions still use estimated phrase timing. No automatic semantic-continuity or forced-alignment guarantee is added.
+
+### Real GPU smoke checks and implementation map
+
+```bash
+# Five-second LTX cinematic video + native audio, with no script API call.
+python scripts/smoke_local_cinematic.py --model ltx-2.5 --duration 5
+
+# Use only media you have permission to animate.
+python scripts/smoke_local_cinematic.py --model wan2.2-animate-2 --duration 5 \
+  --character-image /path/to/reference.png --driving-video /path/to/motion.mp4 \
+  --rights-confirmed --prompt "Describe the reference character's appearance and setting"
+
+python scripts/smoke_local_cinematic.py --model ltx-wan-hybrid --duration 5 \
+  --aspect 16:9 --image /path/to/scene-start.png \
+  --character-image /path/to/actor-in-matching-scene.png --rights-confirmed \
+  --prompt 'A continuous cinematic shot shows the reference actor turning and gently raising a hand in the same warm studio. The camera moves closer as the actor says in English, "Let us begin again," with a calm baritone voice. Quiet room ambience continues.'
+```
+
+The command prints the generation UUID, validates the real MP4 and writes `smoke-report.json` beside it. A CLI wait timeout leaves the existing worker for inspection; it never silently cancels/repeats a model request. Start with5seconds, then30seconds before longer rendering. Full-film time must be measured from actual shots; shared memory capacity does not imply workstation-GPU throughput.
+
+The smoke tool forwards `--prompt` as supplied; match appearance/clothing/location to your chosen images and quote any intended dialogue. `--image` is the explicit LTX scene composition, while `--character-image` is the Wan actor reference. The dashboard's tracked-production path builds its model prompt from the structured screenplay and keeps review/production metadata out of the image prompt. For an existing installation or interrupted run, inspect `CODEX_PROGRESS.md` and saved IDs before invoking a fresh smoke or download.
+
+Observed GB10 validation times (cold/warm kernels and concurrent CPU work vary):
+
+| Real validation | Neural/total time | Peak CUDA allocation |
+|---|---|---|
+| LTX5s T2V/audio | 143.79s total | 7928MiB |
+| LTX30s drama, six5s shots | 78–281s per neural shot | 7928MiB |
+| Wan5s reference animation | 878.19s total | 45316MiB |
+| Realistic5s hybrid | 1049.91s total | 45860MiB |
+| LTX10s image-conditioned shot | 202.50s total | 7928MiB |
+| LTX180s film, eighteen10s I2V shots | 3444.07s summed neural time; median203.16s/shot | 7928MiB |
+
+These are observed tests, not latency guarantees. Hybrid stages run in separate processes, so their memory peaks occur at different times. On GB10, Wan keeps its transformer/VAE resident between windows and offloads the encoders after conditioning; repeatedly transferring the hot models caused long stalls. The16GiB host reserve, CUDA allocator cap and stage deadline remain enabled. Private periodic stack logs can contain a `Timeout` header for a diagnostic snapshot; the saved task status distinguishes that from an actual stopped-stage timeout.
+
+| Files | Change |
+|---|---|
+| `local_cinematic_models.py`, `local_cinematic_service.py`, `app/workers/local_cinematic_worker.py` | Exact checkpoint/capability metadata, isolated offline tasks, serialized GPU stages, progress/metrics and safe recovery |
+| `scripts/setup_local_cinematic.py`, `local_cinematic_constraints.txt`, `smoke_local_cinematic.py` | Explicit isolated setup, owner-authorized downloads, CUDA diagnostics and actual-shot smoke command |
+| `generation_config.py`, `production_plan.py`, `provider_catalog.py`, `script_generation_service.py` | Additive local provider, image/motion bindings, screenplay/timing validation and continuity instructions |
+| `cloud_video_service.py`, `cloud_video_storage.py`, `cloud_video_renderer.py`, `job_service.py`, `content_workflow.py` | Reuse existing productions, UUID persistence, leases, versions, local assembly, quality gates and manual review |
+| `driving_reference_service.py`, `cloud_routes.py` | Additive `driving_references` table; session/CSRF-protected motion upload/list/preview and bound video requests |
+| Streamlit/React generation and production controls | Model/input selection, permitted motion uploads, previews, progress and shot regeneration |
+
+The database migration only adds `driving_references`; existing production, job, script and publishing tables/rows remain intact. Motion assignments and seeds are additive configuration JSON fields. Back up the database before upgrading. Background processing remains local and in-process at the API coordination layer, with detached neural workers and filesystem task state; it is not a distributed queue.

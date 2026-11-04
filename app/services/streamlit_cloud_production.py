@@ -8,7 +8,7 @@ from app.services.streamlit_admin_service import ContentAPIError
 
 def cloud_production(api, catalog=None):
     st.divider()
-    st.header('Cloud video production')
+    st.header('Cloud video production / local cinematic')
     st.caption('Reuse a completed shot plan, explicitly authorize moving clips, assemble locally, then inspect quality before manual review. No automatic local fallback. Runway-hosted Kling models use the Runway key; direct Kling is retired.')
     try:
         scripts = [item for item in api.scripts() if item['status'] == 'completed' and item.get('production_plan', {}).get('shots')]
@@ -49,9 +49,35 @@ def cloud_production(api, catalog=None):
     selected_refs = st.multiselect('Character references to send (maximum 3)', list(by_reference), max_selections=3,
         format_func=lambda value: by_reference[value]['name'] + ' · ' + by_reference[value]['character_id'], key='cloud_references')
     config = (by_script.get(selected, {}).get('configuration') or {})
-    provider_name = 'Runway' if config.get('video_provider') == 'runway' else 'Gemini'
+    local = config.get('video_provider') == 'local_cinematic'
+    provider_name = 'Local cinematic' if local else 'Runway' if config.get('video_provider') == 'runway' else 'Gemini'
+    driving_ids = {}
+    if local and config.get('video_model') == 'wan2.2-animate-2':
+        st.subheader('Driving motion videos · local only')
+        with st.form('local_driving_upload'):
+            driving_name = st.text_input('Motion clip name', max_chars=80)
+            driving_rights = st.text_input('Motion source / rights note', max_chars=500)
+            motion = st.file_uploader('Driving MP4 (3–10 seconds, 20MB maximum)', type=['mp4'])
+            allowed = st.checkbox('I have permission to animate from this video and any depicted person')
+            save_motion = st.form_submit_button('Save driving motion locally')
+        if save_motion:
+            if not motion or not allowed or motion.size > 20 * 1024 * 1024:
+                st.error('Choose a permitted motion MP4 no larger than 20MB.')
+            else:
+                try:
+                    api.cloud('driving-references', {'name':driving_name,'rights_note':driving_rights,'rights_confirmed':True,
+                        'video_base64':base64.b64encode(motion.getvalue()).decode()})
+                    st.rerun()
+                except ContentAPIError as error: st.error(str(error))
+        try:
+            motions = {item['reference_id']:item for item in api.cloud('driving-references')['references']}
+            for shot in by_script[selected]['production_plan']['shots']:
+                motion_id = st.selectbox(f"Driving video for shot {shot['shot_number']}", [None,*motions],
+                    format_func=lambda key: motions[key]['name'] if key else 'Select motion', key=f"local_driving_{selected}_{shot['shot_number']}")
+                if motion_id: driving_ids[shot['shot_number']] = motion_id
+        except ContentAPIError as error: st.error(str(error))
     frame, shot_frames = None, {}
-    if config.get('video_provider') == 'runway' and config.get('video_input_mode') == 'image':
+    if config.get('video_provider') in {'runway','local_cinematic'} and config.get('video_model') != 'wan2.2-animate-2' and config.get('video_input_mode') == 'image':
         st.subheader('Scene start frames')
         st.caption('Select a composed scene per shot. A shared frame explicitly starts multiple shots from the same image. Use the registry above to upload permission-confirmed scene images.')
         label = lambda value: by_reference[value]['name'] if value else 'Use individual frame / shared frame'
@@ -59,14 +85,16 @@ def cloud_production(api, catalog=None):
         for shot in by_script[selected]['production_plan']['shots']:
             image = st.selectbox(f"Start frame for shot {shot['shot_number']}", [None, *by_reference], format_func=label, key=f"cloud_frame_{selected}_{shot['shot_number']}")
             if image: shot_frames[shot['shot_number']] = image
-    fingerprint = json.dumps([selected,selected_refs,frame,shot_frames])
+    fingerprint = json.dumps([selected,selected_refs,frame,shot_frames,driving_ids])
     if st.session_state.get('cloud_quote_fingerprint') != fingerprint:
         st.session_state['cloud_quote_fingerprint'] = fingerprint
         st.session_state.pop('cloud_quote',None)
     uncertain = st.session_state.get('cloud_uncertain',False)
     if st.button(f'Estimate {provider_name} video cost', disabled=not selected or uncertain):
         try:
-            quote = api.cloud('video-quotes', {'script_attempt_id':selected,'reference_ids':selected_refs, **({'start_image_reference_id':frame,'shot_image_reference_ids':shot_frames} if config.get('video_input_mode') == 'image' else {})})
+            quote = api.cloud('video-quotes', {'script_attempt_id':selected,'reference_ids':selected_refs,
+                **({'shot_driving_video_ids':driving_ids} if local else {}),
+                **({'start_image_reference_id':frame,'shot_image_reference_ids':shot_frames} if config.get('video_input_mode') == 'image' else {})})
             st.session_state['cloud_quote'] = {**quote,'kind':'create'}
         except ContentAPIError as error: st.error(str(error))
     if quote := st.session_state.get('cloud_quote'):
@@ -77,15 +105,17 @@ def cloud_production(api, catalog=None):
         provider_name = quote.get('provider_label', provider_name)
         if quote.get('estimated_credits') is not None:
             st.info(f"Runway estimated credits: {quote['estimated_credits']}; available at quote time: {quote.get('available_credits', 'unavailable')}.")
-        st.subheader(f'Authorize {provider_name} video cost')
-        confirmed = st.checkbox(f'I authorize these {provider_name} requests and transfer of the selected material at the displayed estimated cost', key='cloud_confirm_' + quote['quote_id'])
+        local_quote = quote.get('paid_request') is False
+        confirm_label = 'Start local cinematic generation' if local_quote else 'Confirm paid video generation'
+        st.subheader('Confirm local GPU work' if local_quote else f'Authorize {provider_name} video cost')
+        confirmed = st.checkbox('I confirm local GPU generation using these models and selected references' if local_quote else f'I authorize these {provider_name} requests and transfer of the selected material at the displayed estimated cost', key='cloud_confirm_' + quote['quote_id'])
         if uncertain:
             st.warning('A previous submission has an unknown outcome. Inspect production history and provider usage before requesting a new quote.')
         elif not confirmed:
-            st.info(f'Check the {provider_name} video authorization checkbox above to enable Confirm paid video generation. Script-cost authorization is separate.')
+            st.info('Confirm the local GPU work above to enable Start local cinematic generation.' if local_quote else f'Check the {provider_name} video authorization checkbox above to enable Confirm paid video generation. Script-cost authorization is separate.')
         else:
-            st.caption('Video cost authorized. Generation starts only when you click Confirm paid video generation.')
-        if st.button('Confirm paid video generation', disabled=not confirmed or uncertain):
+            st.caption('Generation starts only when you click Start local cinematic generation.' if local_quote else 'Video cost authorized. Generation starts only when you click Confirm paid video generation.')
+        if st.button(confirm_label, disabled=not confirmed or uncertain):
             try:
                 path = 'videos' if quote['kind'] == 'create' else f"videos/{quote['production_id']}/shots"
                 result = api.cloud(path, {'quote_id':quote['quote_id'],'confirmed':True}, paid=True)
@@ -111,7 +141,7 @@ def cloud_production(api, catalog=None):
             st.rerun()
         except ContentAPIError as error: st.error(str(error))
     if not productions:
-        st.info('No cloud video productions yet. Generate a Google- or Runway-selected script with a shot plan in the workshop above.'); return
+        st.info('No moving-video productions yet. Generate a Local cinematic, Google or Runway script with a shot plan in the workshop above.'); return
     current_id = st.selectbox('Existing production', list(by_id), key='cloud_current',
         format_func=lambda value: by_id[value]['production_plan']['content_plan']['title'] + ' · ' + by_id[value]['status'])
     value = by_id[current_id]
@@ -135,6 +165,10 @@ def cloud_production(api, catalog=None):
     for shot in visible_shots:
         attempt_id = shot['attempt_id']
         with st.expander(f"Shot {shot['shot_number']} · v{shot['version']} · {shot['status']}" + (' · selected' if shot['selected'] else '')):
+            if shot.get('provider') == 'local_cinematic' and shot.get('usage'):
+                usage = shot['usage']
+                st.write(f"Stage: {usage.get('stage','queued')}. Elapsed: {usage.get('elapsed_seconds',0):.1f}s. Peak allocated GPU memory: {usage.get('peak_gpu_memory_mb','pending')} MiB. Peak process memory: {usage.get('peak_rss_mb','pending')} MiB.")
+                st.progress(min(1.0,float(usage.get('progress',0))))
             st.write(f"Estimated request cost: ${shot['estimate_usd']}. Calculated token cost: {shot.get('calculated_cost_usd') or 'unavailable'}. Actual bill is not reported.")
             if shot.get('error'): st.warning(shot['error'])
             if shot.get('video_url') and st.button('Preview this clip', key='cloud_preview_' + attempt_id):
@@ -146,7 +180,7 @@ def cloud_production(api, catalog=None):
                     try: api.cloud(f'videos/{current_id}/select',{'attempt_id':attempt_id,'trim_start_seconds':trim}); st.rerun()
                     except ContentAPIError as error: st.error(str(error))
             if shot['status'] in {'completed','failed','validation_failed'}:
-                operation = st.selectbox('Shot operation', ['generate','edit','extend'] if shot['status'] == 'completed' else ['generate'],key='cloud_operation_' + attempt_id)
+                operation = st.selectbox('Shot operation', ['generate','edit','extend'] if shot['status'] == 'completed' and value.get('configuration',{}).get('video_provider') != 'local_cinematic' else ['generate'],key='cloud_operation_' + attempt_id)
                 edit_model = None
                 if operation == 'edit' and value.get('configuration',{}).get('video_provider') == 'runway':
                     models = {item['id']:item['label'] for item in (catalog or {}).get('runway_edit_models',[])} or {'aleph2':'Aleph 2'}

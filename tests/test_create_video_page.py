@@ -452,3 +452,19 @@ def test_streamlit_long_drama_allows_long_duration_and_larger_shot_plan(api_sess
     assert config['content_type']=='long_drama' and config['duration_seconds']==120 and config['max_shots']==30
     assert button(app,'Start local generation').disabled
     assert not job_calls(api_session)
+
+
+def test_streamlit_local_cinematic_choices_preserve_script_independence(api_session):
+    app=page()
+    app.selectbox(key='cv_video_provider').select('local_cinematic').run()
+    models=app.selectbox(key='cv_video_model_local_cinematic')
+    assert set(models.options)  # Labels include exact model versions.
+    assert 'ltx-2.5' in models.value
+    models.select('wan2.2-animate-2').run()
+    app.selectbox(key='cv_video_input_mode').select('image').run()
+    assert app.selectbox(key='cv_script_provider').value=='ollama'
+    assert not app.exception
+    assert button(app,'Start local generation').disabled
+    button(app,'Save settings').click().run()
+    assert api_session.drafts[-1]['config']['video_model']=='wan2.2-animate-2'
+    assert not job_calls(api_session)

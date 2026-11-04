@@ -34,6 +34,7 @@ function ShotCard({ shot, production, request, refresh, onQuote, disabled, editM
   const [extension, setExtension] = useState(3);
   const [editModel,setEditModel] = useState('aleph2');
   const runway = production.configuration?.video_provider === 'runway';
+  const local = production.configuration?.video_provider === 'local_cinematic';
   const [trim, setTrim] = useState(shot.trim_start_seconds || 0);
   const [notes, setNotes] = useState('');
   const [remote, setRemote] = useState('');
@@ -45,11 +46,12 @@ function ShotCard({ shot, production, request, refresh, onQuote, disabled, editM
   return <article className={`cloud-shot ${shot.selected ? 'cloud-shot-selected' : ''}`}><div className="cloud-shot-heading"><h3>Shot {shot.shot_number} · v{shot.version}</h3><span>{shot.status.replaceAll('_', ' ')}{shot.selected ? ' · selected' : ''}</span></div>
     {shot.video_url && <video src={shot.video_url} controls preload="metadata" aria-label={`Shot ${shot.shot_number} version ${shot.version}`} />}
     {shot.error && <p role="alert">{shot.error}</p>}
+    {local && shot.usage && <div><p>{shot.usage.stage?.replaceAll('_',' ')} · {shot.usage.elapsed_seconds || 0}s elapsed · peak GPU allocation {shot.usage.peak_gpu_memory_mb ?? 'pending'} MiB · peak process memory {shot.usage.peak_rss_mb ?? 'pending'} MiB</p><progress aria-label="Local generation progress" max="1" value={shot.usage.progress || 0} /></div>}
     <p>{production.production_plan.shots.find(item => item.shot_number === shot.shot_number)?.action}</p><p>Operation: {shot.operation}. Estimated request: ${shot.estimate_usd}. Reported usage cost: {shot.calculated_cost_usd == null ? 'unavailable' : `$${shot.calculated_cost_usd}`}. Actual invoice: not reported.</p>
     {shot.interaction_id && <small>Generation ID: {shot.generation_id || shot.interaction_id}</small>}
     {shot.status === 'completed' && <div className="cloud-shot-select"><label>Trim start (seconds)<input type="number" min="0" max="120" step="0.1" value={trim} onChange={event => setTrim(Number(event.target.value))} /></label><button type="button" className="button subtle" disabled={disabled || busy} onClick={() => act(() => post(request, `/generation/videos/${production.production_id}/select`, { attempt_id: shot.attempt_id, trim_start_seconds: trim }))}>Use this shot & assemble</button></div>}
     {['completed', 'failed', 'validation_failed'].includes(shot.status) && <details><summary>Create another candidate</summary><p>The original stays available. Voice editing is unsupported. Extended footage must be manually inspected and trimmed to the planned shot window; it does not lengthen the script automatically.</p>
-      <label>Shot operation<select value={operation} onChange={event => setOperation(event.target.value)}><option value="generate">Regenerate this shot</option><option value="edit" disabled={shot.status !== 'completed'}>Edit this shot</option><option value="extend" disabled={shot.status !== 'completed'}>Extend this shot</option></select></label>
+      <label>Shot operation<select value={operation} onChange={event => setOperation(event.target.value)}><option value="generate">Regenerate this shot</option>{!local && <><option value="edit" disabled={shot.status !== 'completed'}>Edit this shot</option><option value="extend" disabled={shot.status !== 'completed'}>Extend this shot</option></>}</select></label>
       {runway && operation === 'edit' && <label>Runway edit model<select value={editModel} onChange={event => setEditModel(event.target.value)}>{(editModels.length ? editModels : [{id:'aleph2',label:'Aleph 2'}]).map(model => <option key={model.id} value={model.id}>{model.label}</option>)}</select><small>Visual edit of the planned shot window; original audio is retained locally. O3 accepts up to 10 seconds; Aleph 2 and Kling 4 accept up to 30.</small></label>}
       {runway && operation === 'extend' && <p>Continue from the parent’s final frame using the generation model, then join locally. Only added seconds are billed. Inspect the result and choose a trim window; the screenplay duration stays fixed.</p>}
       <label>Shot change instructions<textarea rows={3} maxLength={2000} value={instructions} onChange={event => setInstructions(event.target.value)} /></label>
@@ -68,6 +70,12 @@ export default function CloudProduction({ request, editModels=[] }) {
   const [referenceIds, setReferenceIds] = useState([]);
   const [startFrame, setStartFrame] = useState('');
   const [shotFrames, setShotFrames] = useState({});
+  const [driving, setDriving] = useState([]);
+  const [drivers, setDrivers] = useState({});
+  const [motion, setMotion] = useState(null);
+  const [motionName, setMotionName] = useState('');
+  const [motionRights, setMotionRights] = useState('');
+  const [motionAllowed, setMotionAllowed] = useState(false);
   const [credits, setCredits] = useState(null);
   const [current, setCurrent] = useState(null);
   const [sceneFilter,setSceneFilter] = useState('all');
@@ -88,8 +96,8 @@ export default function CloudProduction({ request, editModels=[] }) {
     if (current) { const value = (videos.productions || []).find(item => item.production_id === current.production_id); if (value) setCurrent(value); }
   }
   useEffect(() => { load().catch(err => setError(err.message)); }, [request]);
-  useEffect(() => { setQuote(null); setConfirmed(false); }, [selectedScript, JSON.stringify(referenceIds), startFrame, JSON.stringify(shotFrames)]);
-  useEffect(() => { setStartFrame(''); setShotFrames({}); }, [selectedScript]);
+  useEffect(() => { setQuote(null); setConfirmed(false); }, [selectedScript, JSON.stringify(referenceIds), startFrame, JSON.stringify(shotFrames), JSON.stringify(drivers)]);
+  useEffect(() => { setStartFrame(''); setShotFrames({}); setDrivers({}); }, [selectedScript]);
   useEffect(() => {
     if (!current || !active(current) || uncertain) return;
     let cancelled = false, refreshing = false;
@@ -111,18 +119,28 @@ export default function CloudProduction({ request, editModels=[] }) {
   async function refresh() { if (current) setCurrent(await request(`/generation/videos/${current.production_id}`)); }
   const selectedPlan = scripts.find(item => item.attempt_id === selectedScript);
   const config = selectedPlan?.configuration || {};
-  const draftProviderName = config.video_provider === 'runway' ? 'Runway' : 'Gemini';
+  const local = config.video_provider === 'local_cinematic';
+  const wan = local && config.video_model === 'wan2.2-animate-2';
+  useEffect(() => { if (wan) request('/generation/driving-references').then(value => setDriving(value.references || [])).catch(err => setError(err.message)); }, [wan, request]);
+  async function saveMotion() {
+    if (!motion || !motionAllowed || motion.size > 20 * 1024 * 1024) throw new Error('Choose a permitted motion MP4 no larger than 20MB.');
+    const encoded = await new Promise((resolve,reject) => { const reader = new FileReader(); reader.onload=()=>resolve(reader.result.split(',')[1]); reader.onerror=()=>reject(new Error('Could not read driving video.')); reader.readAsDataURL(motion); });
+    await post(request,'/generation/driving-references',{name:motionName,rights_note:motionRights,rights_confirmed:true,video_base64:encoded});
+    setDriving((await request('/generation/driving-references')).references || []);
+  }
+  const draftProviderName = local ? 'Local cinematic' : config.video_provider === 'runway' ? 'Runway' : 'Gemini';
   const providerName = quote?.provider_label || draftProviderName;
-  const imageInput = config.video_provider === 'runway' && config.video_input_mode === 'image';
+  const imageInput = ['runway','local_cinematic'].includes(config.video_provider) && !wan && config.video_input_mode === 'image';
+  const localQuote = quote?.paid_request === false;
   const submitRequirement = uncertain
     ? 'A previous submission has an unknown outcome. Inspect production history and provider usage before requesting a new quote.'
     : busy
       ? 'A request is in progress. Wait for it to finish.'
       : !confirmed
-        ? `Check “Authorize ${providerName} video cost” above to enable this button. Script-cost authorization is separate.`
-        : 'Video cost authorized. Generation starts only when you click “Confirm paid video generation”.';
-  return <section className="generation-section cloud-production"><div className="generation-section-heading"><span>▶</span><div><h2>Cloud video production</h2><p>Completed script → planned moving shots → local FFmpeg assembly → human quality check → manual review.</p></div></div>
-    <p>Generate a script with Google or Runway selected. The saved model and shot plan are reused here. Select start frames for image-to-video; character portraits and scene start frames serve different purposes. Runway long drama supports 2–20 minutes with a shared cast; inspect every scene for continuity.</p>
+        ? localQuote ? 'Check “Confirm local GPU work” above to enable Start local cinematic generation.' : `Check “Authorize ${providerName} video cost” above to enable this button. Script-cost authorization is separate.`
+        : localQuote ? 'Local GPU work confirmed. Generation starts only when you click Start local cinematic generation.' : 'Video cost authorized. Generation starts only when you click “Confirm paid video generation”.';
+  return <section className="generation-section cloud-production"><div className="generation-section-heading"><span>▶</span><div><h2>Cloud video production / local cinematic</h2><p>Completed script → planned moving shots → local FFmpeg assembly → human quality check → manual review.</p></div></div>
+    <p>Generate a script with Google, Runway or Local cinematic selected. The saved model and shot plan are reused here. Select start frames for image-to-video; character portraits and scene start frames serve different purposes. Runway long drama supports 2–20 minutes with a shared cast; inspect every scene for continuity.</p>
     <p><a href="https://runwayml.com" target="_blank" rel="noreferrer">Powered by Runway</a> · Runway model choice is manual; no automatic model substitution.</p>
     <button type="button" className="button subtle" disabled={busy} onClick={() => act(async () => setCredits(await request('/generation/runway/credits')))}>Check Runway credits</button>{credits && <p>Runway available credits: {credits.available_credits ?? 'unavailable'} (current snapshot).</p>}
     <CharacterRegistry request={request} references={references} reload={load} />
@@ -132,12 +150,20 @@ export default function CloudProduction({ request, editModels=[] }) {
       <label htmlFor="cloud-start-frame">Shared start frame (optional)</label><select id="cloud-start-frame" value={startFrame} onChange={event => setStartFrame(event.target.value)}><option value="">Select per shot below</option>{references.map(ref => <option key={ref.reference_id} value={ref.reference_id}>{ref.name}</option>)}</select>
       {selectedPlan.production_plan.shots.map(shot => <label key={shot.shot_number}>Shot {shot.shot_number}: {shot.action}<select aria-label={`Start frame for shot ${shot.shot_number}`} value={shotFrames[shot.shot_number] || ''} onChange={event => setShotFrames(previous => ({...previous, [shot.shot_number]: event.target.value}))}><option value="">Use shared frame</option>{references.map(ref => <option key={ref.reference_id} value={ref.reference_id}>{ref.name}</option>)}</select></label>)}
     </fieldset>}
-    <div className="generation-actions"><button type="button" className="button primary" disabled={!selectedScript || busy || uncertain} onClick={() => act(async () => setAuthorization(await post(request, '/generation/video-quotes', { script_attempt_id: selectedScript, reference_ids: referenceIds, ...(imageInput ? { start_image_reference_id: startFrame || null, shot_image_reference_ids: Object.fromEntries(Object.entries(shotFrames).filter(([, id]) => id)) } : {}) }), 'create'))}>Estimate {draftProviderName} video cost</button><button type="button" className="button subtle" onClick={() => act(load)}>Refresh production history</button></div>
-    {quote && <div className="generation-paid-authorization"><h3>Review paid video request</h3><p>Model: <strong>{quote.model || 'saved model'}</strong></p><p>Estimated request: <strong>${quote.estimate_usd}</strong> · {quote.shot_count} shot(s) · production reserved estimate after this request: ${quote.projected_estimate_usd}.</p><p>{quote.request_summary?.operation} {quote.request_summary?.shot_number ? `shot ${quote.request_summary.shot_number}` : "shot batch"}{quote.request_summary?.instructions ? `: ${quote.request_summary.instructions}` : ""}</p>{quote.request_summary?.source && <p>Source {quote.request_summary.source.attempt_id} · start {quote.request_summary.source.trim_start_seconds}s · source length {quote.request_summary.source.duration_seconds}s · generated length {quote.request_summary.durations?.join(', ')}s · candidate length {quote.request_summary.candidate_duration}s.</p>}<p>{quote.notice} Quote expires in ten minutes. Review the selected script and references before confirming.</p>
+    {wan && <fieldset className="generation-fieldset"><legend>Driving motion · local only</legend><p>Use permitted 3–10-second motion clips. Each Wan shot animates one reference character; choose its identity image above and motion below.</p>
+      <label>Motion clip name<input value={motionName} maxLength={80} onChange={e=>setMotionName(e.target.value)} /></label>
+      <label>Motion source / rights note<input value={motionRights} maxLength={500} onChange={e=>setMotionRights(e.target.value)} /></label>
+      <label>Driving MP4 (20MB maximum)<input type="file" accept="video/mp4" onChange={e=>setMotion(e.target.files[0])} /></label>
+      <label className="checkbox-label"><input type="checkbox" checked={motionAllowed} onChange={e=>setMotionAllowed(e.target.checked)} /><span>I have permission to animate from this video and any depicted person.</span></label>
+      <button type="button" className="button subtle" disabled={busy || !motionAllowed || !motion || !motionName || !motionRights} onClick={()=>act(saveMotion)}>Save driving motion locally</button>
+      {selectedPlan.production_plan.shots.map(shot=><label key={shot.shot_number}>Driving video for shot {shot.shot_number}<select value={drivers[shot.shot_number] || ''} onChange={e=>setDrivers(previous=>({...previous,[shot.shot_number]:e.target.value}))}><option value="">Select motion</option>{driving.map(item=><option key={item.reference_id} value={item.reference_id}>{item.name}</option>)}</select></label>)}
+    </fieldset>}
+    <div className="generation-actions"><button type="button" className="button primary" disabled={!selectedScript || busy || uncertain} onClick={() => act(async () => setAuthorization(await post(request, '/generation/video-quotes', { script_attempt_id: selectedScript, reference_ids: referenceIds, ...(local ? {shot_driving_video_ids:Object.fromEntries(Object.entries(drivers).filter(([,id])=>id))} : {}), ...(imageInput ? { start_image_reference_id: startFrame || null, shot_image_reference_ids: Object.fromEntries(Object.entries(shotFrames).filter(([, id]) => id)) } : {}) }), 'create'))}>Estimate {draftProviderName} video cost</button><button type="button" className="button subtle" onClick={() => act(load)}>Refresh production history</button></div>
+    {quote && <div className="generation-paid-authorization"><h3>{localQuote ? 'Review local GPU request' : 'Review paid video request'}</h3><p>Model: <strong>{quote.model || 'saved model'}</strong></p><p>Estimated request: <strong>${quote.estimate_usd}</strong> · {quote.shot_count} shot(s) · production reserved estimate after this request: ${quote.projected_estimate_usd}.</p><p>{quote.request_summary?.operation} {quote.request_summary?.shot_number ? `shot ${quote.request_summary.shot_number}` : "shot batch"}{quote.request_summary?.instructions ? `: ${quote.request_summary.instructions}` : ""}</p>{quote.request_summary?.source && <p>Source {quote.request_summary.source.attempt_id} · start {quote.request_summary.source.trim_start_seconds}s · source length {quote.request_summary.source.duration_seconds}s · generated length {quote.request_summary.durations?.join(', ')}s · candidate length {quote.request_summary.candidate_duration}s.</p>}<p>{quote.notice} Quote expires in ten minutes. Review the selected script and references before confirming.</p>
       {quote.estimated_credits != null && <p>Estimated credits: <strong>{quote.estimated_credits}</strong>. Available at quote time: {quote.available_credits ?? 'unavailable'}. <a href="https://docs.dev.runwayml.com/guides/pricing/" target="_blank" rel="noreferrer">Runway pricing</a></p>}
-      <div className="generation-video-consent"><label className="checkbox-label" htmlFor="cloud-video-cost-consent"><input id="cloud-video-cost-consent" type="checkbox" checked={confirmed} disabled={busy || uncertain} onChange={event => setConfirmed(event.target.checked)} /><span><strong>Authorize {providerName} video cost</strong><span>I authorize these {providerName} requests and transfer of the selected material at the displayed estimated cost.</span></span></label></div>
+      <div className="generation-video-consent"><label className="checkbox-label" htmlFor="cloud-video-cost-consent"><input id="cloud-video-cost-consent" type="checkbox" checked={confirmed} disabled={busy || uncertain} onChange={event => setConfirmed(event.target.checked)} /><span><strong>{localQuote ? 'Confirm local GPU work' : `Authorize ${providerName} video cost`}</strong><span>{localQuote ? 'I confirm local generation using these models and selected references. No provider video fee applies.' : `I authorize these ${providerName} requests and transfer of the selected material at the displayed estimated cost.`}</span></span></label></div>
       <p id="cloud-video-submit-requirement" className="generation-submit-requirement" role="status">{submitRequirement}</p>
-      <button type="button" className="button primary" aria-describedby="cloud-video-submit-requirement" disabled={!confirmed || busy || uncertain} onClick={submit}>Confirm paid video generation</button></div>}
+      <button type="button" className="button primary" aria-describedby="cloud-video-submit-requirement" disabled={!confirmed || busy || uncertain} onClick={submit}>{localQuote ? 'Start local cinematic generation' : 'Confirm paid video generation'}</button></div>}
     {uncertain && <div role="alert"><p>Submission outcome is unknown. Inspect history and provider usage; an automatic retry will never be sent.</p><label className="checkbox-label"><input type="checkbox" checked={inspected} onChange={event => setInspected(event.target.checked)} /><span>I inspected production history and provider usage.</span></label><button type="button" className="button subtle" disabled={!inspected} onClick={() => { setUncertain(false); setQuote(null); setConfirmed(false); setInspected(false); }}>Allow a separately quoted request</button></div>}
     {error && <p role="alert">{error}</p>}
     {!!productions.length && <label>Open an existing production<select aria-label="Existing production" value={current?.production_id || ''} onChange={event => { setCurrent(productions.find(item => item.production_id === event.target.value)); setChecks([false,false,false]); setQuote(null); setConfirmed(false); }}><option value="">Choose a production</option>{productions.map(value => <option key={value.production_id} value={value.production_id}>{value.production_plan.content_plan.title} · {value.status.replaceAll('_', ' ')} · {value.production_id.slice(0,8)}</option>)}</select></label>}

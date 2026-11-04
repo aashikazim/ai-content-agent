@@ -44,6 +44,11 @@ class CloudVideoStorage(GenerationStorage):
                     voice_notes TEXT NOT NULL, rights_note TEXT NOT NULL,
                     image_path TEXT NOT NULL, sha256 TEXT NOT NULL, created_at INTEGER NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS driving_references (
+                    reference_id TEXT PRIMARY KEY, name TEXT NOT NULL, rights_note TEXT NOT NULL,
+                    video_path TEXT NOT NULL, sha256 TEXT NOT NULL, quality_json TEXT NOT NULL,
+                    created_at INTEGER NOT NULL
+                );
             ''')
             # React loads references and productions concurrently. Serialize
             # additive migrations so those first reads cannot ALTER the same

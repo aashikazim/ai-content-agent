@@ -21,6 +21,56 @@ function api({lost=false,existing=false}={}) {
   });
 }
 const paid = request=>request.mock.calls.filter(([path,options])=>path==='/generation/videos' && options?.method==='POST');
+it('confirms local GPU work without claiming a paid video request',async()=>{
+  const user=userEvent.setup(); const base=api();
+  const request=vi.fn(async(path,options)=>{
+    if(path==='/generation/scripts')return {attempts:[{attempt_id:scriptId,status:'completed',production_plan:plan,configuration:{video_provider:'local_cinematic',video_model:'ltx-2.5',video_input_mode:'text'}}]};
+    if(path==='/generation/video-quotes')return {quote_id:identifier,paid_request:false,provider_label:'Local cinematic',model:'ltx-2.5',estimate_usd:'0',projected_estimate_usd:'0',shot_count:1,notice:'Local generation; no provider video fee.'};
+    return base(path,options);
+  });
+  render(<CloudProduction request={request}/>);
+  await screen.findByLabelText('Completed script with a shot plan');
+  await user.selectOptions(screen.getByLabelText('Completed script with a shot plan'),scriptId);
+  await user.click(screen.getByRole('button',{name:'Estimate Local cinematic video cost'}));
+  const start=await screen.findByRole('button',{name:'Start local cinematic generation'});
+  expect(start).toBeDisabled();
+  expect(screen.queryByRole('button',{name:'Confirm paid video generation'})).not.toBeInTheDocument();
+  await user.click(screen.getByRole('checkbox',{name:/Confirm local GPU work/}));
+  expect(start).toBeEnabled();
+  expect(paid(request)).toHaveLength(0);
+  await user.click(start);
+  expect(paid(request)).toHaveLength(1);
+  expect(request.mock.calls.some(([path])=>/publish|\/review$/.test(path))).toBe(false);
+});
+
+it('shows local performance and only regeneration for local candidates',async()=>{
+  const user=userEvent.setup(); const base=api();
+  const request=vi.fn(async(path,options)=>path==='/generation/videos' && !options?.method ? {productions:[{...production,configuration:{video_provider:'local_cinematic'},shots:[{...production.shots[0],provider:'local_cinematic',usage:{stage:'completed',progress:1,elapsed_seconds:120,peak_gpu_memory_mb:50000}}]}]} : base(path,options));
+  render(<CloudProduction request={request}/>);
+  await screen.findByLabelText('Existing production');
+  await user.selectOptions(screen.getByLabelText('Existing production'),identifier);
+  expect(screen.getByRole('progressbar',{name:'Local generation progress'})).toHaveAttribute('value','1');
+  expect(screen.queryByRole('option',{name:'Edit this shot'})).not.toBeInTheDocument();
+  expect(screen.getByText(/50000 MiB/)).toBeVisible();
+});
+
+it('binds Wan driving motion assignments to the generation request',async()=>{
+  const user=userEvent.setup(); const base=api(); const motionId='ba7fb41f-eafa-493d-9b28-31358dc98850';
+  const request=vi.fn(async(path,options)=>{
+    if(path==='/generation/scripts')return {attempts:[{attempt_id:scriptId,status:'completed',production_plan:plan,configuration:{video_provider:'local_cinematic',video_model:'wan2.2-animate-2',video_input_mode:'image'}}]};
+    if(path==='/generation/driving-references')return {references:[{reference_id:motionId,name:'My permitted performance'}]};
+    return base(path,options);
+  });
+  render(<CloudProduction request={request}/>);
+  await screen.findByLabelText('Completed script with a shot plan');
+  await user.selectOptions(screen.getByLabelText('Completed script with a shot plan'),scriptId);
+  await screen.findByRole('option',{name:'My permitted performance'});
+  await user.selectOptions(screen.getByLabelText('Driving video for shot 1'),motionId);
+  await user.click(screen.getByRole('button',{name:'Estimate Local cinematic video cost'}));
+  const [,options]=request.mock.calls.find(([path])=>path==='/generation/video-quotes');
+  expect(JSON.parse(options.body).shot_driving_video_ids).toEqual({1:motionId});
+  expect(paid(request)).toHaveLength(0);
+});
 it('uses Runway start frames, credits and fresh paid consent without a Gemini key', async()=>{
   const user=userEvent.setup();
   const base=api();

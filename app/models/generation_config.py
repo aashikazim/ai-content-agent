@@ -26,11 +26,13 @@ class GenerationConfig(BaseModel):
         default_factory=lambda: os.getenv("OLLAMA_MODEL", "qwen3:8b"),
         min_length=1, max_length=200,
     )
-    video_provider: Literal["local", "google", "kling", "runway"] = "local"
+    video_provider: Literal["local", "google", "kling", "runway", "local_cinematic"] = "local"
     video_model: str = Field(default="local-pipeline", min_length=1, max_length=200)
     video_input_mode: Literal["text", "image"] = "text"
     start_image_reference_id: UUID | None = None
     shot_image_reference_ids: dict[int, UUID] = Field(default_factory=dict, max_length=240)
+    shot_driving_video_ids: dict[int, UUID] = Field(default_factory=dict, max_length=240)
+    local_seed: int = Field(default=42, ge=0, le=2147483647, strict=True)
     image_mode: Literal["text", "diffusion"] = "text"
     image_model: str = Field(
         default_factory=lambda: os.getenv("IMAGE_MODEL_ID", DEFAULT_IMAGE_MODEL),
@@ -65,10 +67,14 @@ class GenerationConfig(BaseModel):
     @model_validator(mode="after")
     def validate_reference_ids(self):
         limit = 240 if self.content_type == 'long_drama' else 12
-        if self.max_shots > limit or len(self.shot_image_reference_ids) > limit:
+        if self.max_shots > limit or len(self.shot_image_reference_ids) > limit or len(self.shot_driving_video_ids) > limit:
             raise ValueError(f'This content type supports at most {limit} shots')
         if any(not 1 <= key <= limit for key in self.shot_image_reference_ids):
             raise ValueError(f"Shot image keys must be shot numbers 1–{limit}")
+        if any(not 1 <= key <= limit for key in self.shot_driving_video_ids):
+            raise ValueError(f"Driving video keys must be shot numbers 1–{limit}")
+        if self.video_provider != 'local_cinematic' and self.shot_driving_video_ids:
+            raise ValueError('Driving motion inputs are available only for local cinematic models')
         if len(set(self.character_reference_ids)) != len(self.character_reference_ids):
             raise ValueError("Character reference IDs must be unique")
         return self

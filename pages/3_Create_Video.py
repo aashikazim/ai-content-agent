@@ -198,8 +198,10 @@ def model_controls(kind, column):
 script_provider, script_model = model_controls("script", script_column)
 video_provider, video_model = model_controls("video", video_column)
 
-video_input_mode = st.selectbox("Runway input mode", ["text", "image"], key="cv_video_input_mode",
-    format_func=lambda value: "Text to video" if value == "text" else "Image to video") if video_provider == "runway" else "text"
+video_input_mode = st.selectbox("Runway input mode" if video_provider == 'runway' else 'Local cinematic input mode', ["text", "image"], key="cv_video_input_mode",
+    format_func=lambda value: "Text to video" if value == "text" else "Image to video") if video_provider in {"runway", "local_cinematic"} else "text"
+if video_provider == 'local_cinematic':
+    st.info('Use the production panel below after the script workshop. LTX/hybrid support text or composed scene frames. Wan-only requires image mode, one actor per shot and a permitted driving video. Models run in a separate environment; native 512px short-edge output is upscaled by FFmpeg.')
 if video_provider == "runway":
     st.caption("Gen-4 Turbo needs image input. Gen-4 and Kling 2.5 require local narration. Select scene start frames in the production panel after generating the script. Native model resolution differs from final FFmpeg output.")
 
@@ -284,10 +286,10 @@ for reason in preflight.get("errors", []):
 executable = preflight.get("executable", False)
 if video_provider != "local":
     executable = False
-    st.info("Use the script workshop, then the cloud production panel below for cloud video. The local button does not submit cloud work.")
+    st.info("Use the script workshop, then the production panel below for local cinematic or cloud moving footage.")
 if executable:
     st.success("These settings can run locally. Generation will stop at manual review.")
-else:
+elif video_provider == 'local':
     st.info("Generation is unavailable for these settings. Planned integrations can be saved as drafts after any validation issues are resolved.")
 st.caption("OpenAI scripts require separate paid authorization. Approval and publishing remain separate manual actions.")
 

@@ -25,7 +25,7 @@ function Section({ number, title, description, children }) {
 
 function ProviderInfo({ provider, model }) {
   if (!provider) return null;
-  const local = provider.id === 'local' || provider.id === 'ollama';
+  const local = ['local', 'ollama', 'local_cinematic'].includes(provider.id);
   return <div className={`generation-provider-info ${provider.implemented ? '' : 'provider-planned'}`}>
     <span className={`generation-badge ${provider.implemented ? 'available' : ''}`}>{provider.implemented ? 'Adapter implemented' : 'Integration planned'}</span>
     {!local && <strong>{provider.configured ? `Credential configured · ${provider.implemented ? 'account access unverified' : 'integration planned'}` : 'Credential not configured'}</strong>}
@@ -39,6 +39,7 @@ function ProviderInfo({ provider, model }) {
 
 function plannedReasons(configuration, catalog) {
   const reasons = [];
+  if (configuration.video_provider === 'local_cinematic') return ['Use the script workshop and production panel below for local moving shots. The isolated model runtime must be installed.'];
   if (['google', 'runway'].includes(configuration.video_provider) && catalog.phase >= 3) return ['Use the script workshop and cloud production panel below; cloud video requires its own quote and confirmation.'];
   if (configuration.video_provider === 'kling' && catalog.phase >= 3) return ['Kling is retired. Explicitly select Google or the local pipeline.'];
   const type = catalog.content_types.find(item => item.id === configuration.content_type);
@@ -107,7 +108,7 @@ export default function GenerationForm({ request, onCreated }) {
     const provider = catalog[`${kind}_providers`].find(item => item.id === id);
     const model = provider.models[0];
     const values = { [`${kind}_provider`]: id, [`${kind}_model`]: model.id };
-    if (kind === 'video') { values.video_input_mode = id === 'runway' ? model.input_modes?.[0] || 'text' : 'text'; values.start_image_reference_id = null; values.shot_image_reference_ids = {}; }
+    if (kind === 'video') { values.video_input_mode = ['runway','local_cinematic'].includes(id) ? model.input_modes?.[0] || 'text' : 'text'; values.start_image_reference_id = null; values.shot_image_reference_ids = {}; values.shot_driving_video_ids = {}; }
     if (kind === 'video' && model.fps?.length === 1) values.fps = model.fps[0];
     change(values);
     if (values.fps && values.fps !== configuration.fps) setMessage(`${provider.label} uses ${values.fps} fps. The frame rate has been set to its native output.`);
@@ -184,7 +185,7 @@ export default function GenerationForm({ request, onCreated }) {
   const videoModel = videoProvider?.models.find(item => item.id === configuration.video_model);
   const blockers = plannedReasons(configuration, catalog);
   const contentType = catalog.content_types.find(item => item.id === configuration.content_type);
-  const isCloud = configuration.script_provider !== 'ollama' || configuration.video_provider !== 'local';
+  const isCloud = configuration.script_provider === 'openai' || ['google','runway','kling'].includes(configuration.video_provider);
 
   return <div className="generation-workspace">
     <div className="generation-intro"><Symbol /><div><strong>A clear plan before the first frame.</strong><p>Choose script and visual models independently. Local video and short-form script drafts are available. OpenAI scripts and cloud video require separate cost authorization. Final assembly runs locally.</p></div><span className="generation-badge available">PHASE {catalog.phase}</span></div>
@@ -221,10 +222,11 @@ export default function GenerationForm({ request, onCreated }) {
                 <div>
                   <div className="generation-model-heading"><Symbol>▧</Symbol><h3>Visuals & video</h3></div>
                   <Field name="video-provider" label="Video provider"><select id="create-video-provider" value={configuration.video_provider} onChange={event => changeProvider('video', event.target.value)}>{!catalog.video_providers.some(item => item.id === configuration.video_provider) && <option value={configuration.video_provider} disabled>{configuration.video_provider} · retired selection</option>}{catalog.video_providers.map(item => <option key={item.id} value={item.id}>{item.label}{item.implemented ? '' : ' · planned'}</option>)}</select></Field>
-                  <Field name="video-model" label="Video model"><select id="create-video-model" value={configuration.video_model} onChange={event => change({ video_model: event.target.value })}>{!videoProvider && <option value={configuration.video_model} disabled>{configuration.video_model} · retired</option>}{videoProvider?.models.map(item => <option key={item.id} value={item.id}>{item.label || item.id}</option>)}</select></Field>
+                  <Field name="video-model" label="Video model"><select id="create-video-model" value={configuration.video_model} onChange={event => change({ video_model: event.target.value, ...(configuration.video_provider === 'local_cinematic' ? {video_input_mode:event.target.value === 'wan2.2-animate-2' ? 'image' : 'text',start_image_reference_id:null,shot_image_reference_ids:{},shot_driving_video_ids:{}} : {}) })}>{!videoProvider && <option value={configuration.video_model} disabled>{configuration.video_model} · retired</option>}{videoProvider?.models.map(item => <option key={item.id} value={item.id}>{item.label || item.id}</option>)}</select></Field>
                   <ProviderInfo provider={videoProvider} model={videoModel} />
                 </div>
               </div>
+              {configuration.video_provider === 'local_cinematic' && <div className="generation-local-assets"><Field name="local-input-mode" label="Local cinematic input mode"><select id="create-local-input-mode" value={configuration.video_input_mode || 'text'} onChange={e=>change({video_input_mode:e.target.value,start_image_reference_id:null,shot_image_reference_ids:{}})}><option value="text" disabled={configuration.video_model === 'wan2.2-animate-2'}>Text to video</option><option value="image">Image to video</option></select></Field><p>Isolated local GPU models. LTX generates motion and audio; Wan animates one reference actor using driving footage; hybrid uses LTX footage as motion and keeps its audio. Native 512px short edge is upscaled locally. Select references and motion after completing the screenplay.</p></div>}
               {configuration.video_provider === 'runway' && <div className="generation-local-assets"><Field name="video-input-mode" label="Runway input mode"><select id="create-video-input-mode" value={configuration.video_input_mode || 'text'} onChange={event => change({video_input_mode:event.target.value, start_image_reference_id:null, shot_image_reference_ids:{}})}><option value="text" disabled={!videoProvider?.models.find(item => item.id === configuration.video_model)?.input_modes?.includes('text')}>Text to video</option><option value="image">Image to video</option></select></Field><p>Choose image-to-video for Gen-4 Turbo, then select scene start frames after completing the script. Gen-4 models and Kling 2.5 use local narration. Audio-capable Kling models can generate dialogue. Native resolution and cost vary by model; FFmpeg normalizes final output.</p></div>}
               {configuration.video_provider === 'local' && <div className="generation-local-assets"><Field name="image-mode" label="Local visual assets"><select id="create-image-mode" value={configuration.image_mode} onChange={event => change({ image_mode: event.target.value })}><option value="text">Text cards · baseline quality</option><option value="diffusion">Generated images · local diffusion</option></select></Field><p>{configuration.image_mode === 'text' ? 'Text cards are explicit baseline output. Choose diffusion for generated scene images; neither option creates motion footage.' : 'Requires the configured image model and compatible GPU inference setup. Missing image assets must fail the job.'}</p>{configuration.image_mode === 'diffusion' && <Field name="image-model" label="Local image model"><select id="create-image-model" value={configuration.image_model} onChange={event => change({ image_model: event.target.value })}>{catalog.image_models?.map(item => <option key={item.id} value={item.id}>{item.label || item.id}</option>)}</select></Field>}</div>}
             </Section>
@@ -251,7 +253,7 @@ export default function GenerationForm({ request, onCreated }) {
             <div className={`generation-frame frame-${configuration.aspect_ratio.replace(':', '-')}`} aria-hidden="true"><span>YOUR NEXT<br /><em>ORIGINAL.</em></span><div className="generation-frame-lines"><i /><i /><i /></div><small>{configuration.aspect_ratio} · {configuration.duration_seconds}s</small></div>
             <h2>{contentType?.label}</h2>
             <dl><div><dt>Script</dt><dd>{scriptModel?.label || configuration.script_model}</dd></div><div><dt>Video</dt><dd>{videoModel?.label || configuration.video_model}</dd></div><div><dt>Output</dt><dd>{configuration.resolution} · {configuration.fps} fps</dd></div><div><dt>Cloud cost</dt><dd>Script quote required for OpenAI</dd></div></dl>
-            <div className={`generation-readiness ${blockers.length ? 'planned' : ''}`}><strong><span />{blockers.length ? 'Configuration only' : 'Local configuration'}</strong><p>{['google', 'runway'].includes(configuration.video_provider) && catalog.phase >= 3 ? 'Draft a shot plan in the script workshop, then authorize cloud clips in the production panel below.' : blockers.length ? 'Save these settings for a future integration. Generation is currently unavailable for this combination.' : 'Check your settings, then start a local generation job. Model and service setup must be complete.'}</p></div>
+            <div className={`generation-readiness ${blockers.length ? 'planned' : ''}`}><strong><span />{configuration.video_provider === 'local_cinematic' ? 'Local cinematic workflow' : blockers.length ? 'Configuration only' : 'Local configuration'}</strong><p>{configuration.video_provider === 'local_cinematic' ? 'Draft a shot plan in the script workshop, then start local GPU shots in the production panel below. The legacy illustrated-generation button is separate.' : ['google', 'runway'].includes(configuration.video_provider) && catalog.phase >= 3 ? 'Draft a shot plan in the script workshop, then authorize cloud clips in the production panel below.' : blockers.length ? 'Save these settings for a future integration. Generation is currently unavailable for this combination.' : 'Check your settings, then start a local generation job. Model and service setup must be complete.'}</p></div>
             {blockers.length > 0 && <ul className="generation-blockers">{blockers.map(reason => <li key={reason}>{reason}</li>)}</ul>}
             {isCloud && <p className="generation-cost-note">An API credential never authorizes a charge. Scripts and cloud video need separate quotes and confirmation.</p>}
             {catalog.phase >= 2 && configuration.script_provider === 'openai' && configuration.video_provider === 'local' && <PaidScriptAuthorization request={request} configuration={configuration} context={{ category, region: region.toUpperCase(), limit: Number(limit) }} purpose="video" onChange={setVideoAuthorization} />}

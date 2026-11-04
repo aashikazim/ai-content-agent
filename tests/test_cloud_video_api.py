@@ -55,11 +55,12 @@ def create(api):
 
 def test_cloud_endpoints_require_session_and_csrf(generation_api):
     api=generation_api
-    for path in ['videos','references','runway/credits']:
+    for path in ['videos','references','runway/credits','driving-references']:
         assert api.client.get('/api/v1/generation/'+path,headers=api.api_headers).status_code==401
     sign_in(api)
     assert api.client.post('/api/v1/generation/video-quotes',json={'script_attempt_id':str(uuid4())}).status_code==403
     assert api.client.post('/api/v1/generation/references',json={}).status_code==403
+    assert api.client.post('/api/v1/generation/driving-references',json={}).status_code==403
 
 
 def test_cloud_quote_and_creation_are_separate_and_do_not_repeat_script(cloud_api):
@@ -118,7 +119,7 @@ def test_missing_keys_retired_kling_and_bad_shot_plans_cannot_bill(cloud_api,mon
     assert api.client.post('/api/v1/generation/video-quotes',json={'script_attempt_id':api.script_id},headers=api.headers).status_code==422
     assert api.provider.posts==0
     catalog=api.client.get('/api/v1/generation/catalog').json()
-    assert [item['id'] for item in catalog['video_providers']]==['local','google','runway']
+    assert [item['id'] for item in catalog['video_providers']]==['local','google','runway','local_cinematic']
 
 
 def test_runway_image_quote_submission_and_manual_review_are_separate(cloud_api, monkeypatch):

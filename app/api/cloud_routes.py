@@ -11,6 +11,7 @@ from app.api.admin_routes import require_session
 from app.services.character_reference_service import ReferenceUpload
 from app.services.cloud_video_service import CloudVideoService
 from app.services.gemini_video_service import VideoProviderError
+from app.services.driving_reference_service import DrivingUpload
 
 router = APIRouter(prefix='/api/v1/generation', dependencies=[Depends(require_session)])
 
@@ -34,6 +35,7 @@ class QuoteRequest(BaseModel):
     reference_ids: list[UUID] | None = Field(default=None, max_length=3)
     start_image_reference_id: UUID | None = None
     shot_image_reference_ids: dict[int, UUID] | None = Field(default=None, max_length=240)
+    shot_driving_video_ids: dict[int, UUID] | None = Field(default=None, max_length=240)
 
 
 class PaidSubmission(BaseModel):
@@ -62,7 +64,7 @@ def reference_image(reference_id: UUID):
 
 @router.post('/video-quotes')
 def video_quote(body: QuoteRequest, principal=Depends(require_session)):
-    options = {key: getattr(body, key) for key in ('start_image_reference_id', 'shot_image_reference_ids') if key in body.model_fields_set}
+    options = {key: getattr(body, key) for key in ('start_image_reference_id', 'shot_image_reference_ids', 'shot_driving_video_ids') if key in body.model_fields_set}
     return invoke(lambda: service().quote(str(body.script_attempt_id), principal['username'], body.reference_ids,
         **options))
 
@@ -72,6 +74,22 @@ def runway_credits():
     from app.models.generation_config import GenerationConfig
     from app.services.runway_video_service import RunwayVideoService
     return invoke(lambda: RunwayVideoService(GenerationConfig(video_provider='runway', video_model='gen4.5')).check_model())
+
+
+@router.get('/driving-references')
+def driving_references():
+    return {'references': service().driving.list_references()}
+
+
+@router.post('/driving-references', status_code=201)
+def upload_driving_reference(body: DrivingUpload):
+    return invoke(lambda: service().driving.create(body))
+
+
+@router.get('/driving-references/{reference_id}/video')
+def driving_video(reference_id: UUID):
+    value = invoke(lambda: service().driving.verified(reference_id))
+    return FileResponse(value['video_path'], media_type='video/mp4', headers={'Cache-Control': 'no-store'})
 
 
 @router.post('/videos', status_code=202)

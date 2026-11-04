@@ -36,6 +36,7 @@ def test_missing_motion_audio_and_wrong_duration_block_review(tmp_path):
     ('google', 'gemini-omni-1.1-flash', 'model_audio'),
     ('runway', 'kling3.0_standard', 'model_audio'),
     ('runway', 'gen4.5', 'local_tts'),
+    ('local_cinematic', 'ltx-2.5', 'model_audio'),
 ])
 def test_actual_cloud_clip_assembly_has_captions_audio_and_correct_output(tmp_path, provider, model, narration):
     data=cloud_production().model_dump(mode='json')
@@ -74,20 +75,30 @@ def test_caption_text_cannot_inject_ass_overrides(tmp_path):
     assert '{' not in path.read_text() and '\\pos' not in path.read_text()
 
 
-def test_real_two_minute_drama_assembly_and_manifest(tmp_path):
+@pytest.mark.parametrize('duration,provider,model', [
+    (120, 'runway', 'kling3.0_standard'),
+    (192, 'local_cinematic', 'ltx-2.5'),
+    (240, 'local_cinematic', 'ltx-wan-hybrid'),
+])
+def test_real_long_drama_assembly_and_manifest(tmp_path, duration, provider, model):
+    # Real FFmpeg at target film lengths using synthetic moving clips. This
+    # verifies assembly limits, not neural generation or semantic continuity.
     from tests.test_long_drama import long_production,long_config
-    production=long_production()
-    config=long_config().model_copy(update={'resolution':'720p','fps':24})
+    production=long_production(duration)
+    config=long_config().model_copy(update={'resolution':'720p','fps':24,
+        'duration_seconds':duration,'video_provider':provider,'video_model':model})
     production.validate_configuration(config)
     clip=tmp_path/'source.mp4';fixture_video(clip,8)
     selected={shot.shot_number:{'clip_path':str(clip),'trim_start_seconds':0,'model':config.video_model} for shot in production.shots}
     output,quality=CloudVideoRenderer(config).assemble(production,selected,tmp_path/'long')
     assert quality['technical_passed'] and quality['has_audio']
-    assert abs(quality['duration_seconds']-120)<.3
+    assert abs(quality['duration_seconds']-duration)<.3
     assert (quality['width'],quality['height'])==(720,1280)
     manifest=json.loads((output.parent/'manifest.json').read_text())
-    assert len(manifest['scenes'])==15 and manifest['review_status']=='draft'
-    assert (output.parent/'captions_15.ass').is_file()
+    count=duration//8
+    assert len(manifest['scenes'])==count and manifest['review_status']=='draft'
+    assert all(scene['model']==model for scene in manifest['scenes'])
+    assert (output.parent/f'captions_{count}.ass').is_file()
 
 
 def test_real_visual_edit_preserves_source_audio_and_original_bytes(tmp_path):

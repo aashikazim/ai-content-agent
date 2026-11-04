@@ -21,7 +21,7 @@ def test_catalog_does_not_claim_model_or_account_access(monkeypatch):
     assert local["implemented"] is True
     assert local["status"] == "runtime_unverified"
     assert local["models"][0]["motion"] is False
-    assert all(not p["configured"] for p in catalog["video_providers"][1:])
+    assert all(not p["configured"] for p in catalog["video_providers"] if p['id'] in {'google','runway'})
     types = {item["id"]: item for item in catalog["content_types"]}
     assert types["short_drama"]["phase"] == 4
     assert types["news"]["phase"] == 6
@@ -34,13 +34,13 @@ def test_catalog_exposes_only_credential_presence(monkeypatch):
     for name, secret in zip(("OPENAI_API_KEY", "GEMINI_API_KEY", "KLING_API_KEY", "RUNWAYML_API_SECRET"), secrets):
         monkeypatch.setenv(name, secret)
     catalog = get_catalog()
-    providers = catalog["script_providers"][1:] + catalog["video_providers"][1:]
+    providers = catalog["script_providers"][1:] + [p for p in catalog["video_providers"] if p['id'] in {'google','runway'}]
     assert all(provider["configured"] is True for provider in providers)
     assert providers[0]["implemented"] is True
     assert providers[0]["account_access"] == "unverified"
     assert all(provider["implemented"] is True for provider in providers[1:])
     assert all(provider["executable"] is True for provider in providers[1:])
-    assert [item["id"] for item in catalog["video_providers"]] == ["local", "google", "runway"]
+    assert [item["id"] for item in catalog["video_providers"]] == ["local", "google", "runway", "local_cinematic"]
     serialized = json.dumps(catalog)
     assert all(secret not in serialized for secret in secrets)
 
