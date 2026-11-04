@@ -200,8 +200,8 @@ def generation_preflight(body: ConfigurationRequest):
     except ValueError as exc:
         errors.append(str(exc))
     warnings = ["Account/model access is unverified. Cloud video requires a completed shot plan and a separate video cost quote."]
-    if config.script_provider == "openai":
-        warnings.append("OpenAI script generation requires an administrator's current cost quote and explicit confirmation.")
+    if config.script_provider in {"openai", "anthropic"}:
+        warnings.append("Paid script generation requires an administrator's current cost quote and explicit confirmation.")
     if config.video_provider == "local":
         warnings.append(
             "Local output uses still images or text cards, not moving footage or animated actors."
@@ -309,7 +309,7 @@ def create_job(
 
     jobs = get_jobs()
     config = request.generation_config
-    if config and config.script_provider == "openai" and principal["kind"] != "session":
+    if config and config.script_provider in {"openai", "anthropic"} and principal["kind"] != "session":
         raise HTTPException(403, "Paid script generation requires an administrator session and cost confirmation")
     if config is not None and "image_mode" in request.model_fields_set:
         if request.image_mode != config.image_mode:

@@ -70,7 +70,7 @@ class JobService:
             raise ValueError("Cloud video starts from a completed script and a video cost quote; use the video production endpoint")
         script_service = None
         script_request = None
-        if config.script_provider == "openai":
+        if config.script_provider in {"openai", "anthropic"}:
             from app.services.script_generation_service import ScriptGenerationService
             if not actor:
                 raise ValueError("Paid script generation requires an authenticated administrator")

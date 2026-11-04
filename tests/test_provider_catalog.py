@@ -11,7 +11,7 @@ from app.services.provider_catalog import (
 
 
 def test_catalog_does_not_claim_model_or_account_access(monkeypatch):
-    for name in ("OPENAI_API_KEY", "GEMINI_API_KEY", "KLING_API_KEY", "RUNWAYML_API_SECRET"):
+    for name in ("OPENAI_API_KEY", "GEMINI_API_KEY", "KLING_API_KEY", "RUNWAYML_API_SECRET", "ANTHROPIC_API_KEY"):
         monkeypatch.delenv(name, raising=False)
     catalog = get_catalog()
     assert catalog["phase"] == 6
@@ -30,8 +30,8 @@ def test_catalog_does_not_claim_model_or_account_access(monkeypatch):
 
 
 def test_catalog_exposes_only_credential_presence(monkeypatch):
-    secrets = ["dummy-openai-secret", "dummy-google-secret", "dummy-kling-secret", "dummy-runway-secret"]
-    for name, secret in zip(("OPENAI_API_KEY", "GEMINI_API_KEY", "KLING_API_KEY", "RUNWAYML_API_SECRET"), secrets):
+    secrets = ["dummy-openai-secret", "dummy-google-secret", "dummy-kling-secret", "dummy-runway-secret", "dummy-claude-secret"]
+    for name, secret in zip(("OPENAI_API_KEY", "GEMINI_API_KEY", "KLING_API_KEY", "RUNWAYML_API_SECRET", "ANTHROPIC_API_KEY"), secrets):
         monkeypatch.setenv(name, secret)
     catalog = get_catalog()
     providers = catalog["script_providers"][1:] + [p for p in catalog["video_providers"] if p['id'] in {'google','runway'}]

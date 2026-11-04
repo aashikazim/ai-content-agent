@@ -44,9 +44,9 @@ def script_workshop(api, configuration, category, region, limit):
     context = {"category": category, "region": region, "limit": limit, "purpose": "script",
                "parent_attempt_id": parent, "revision_instructions": revision}
     authorization = None
-    if configuration["script_provider"] == "openai":
-        st.warning("OpenAI receives your supplied material. This authorizes text generation only, never a video upload or cloud video request.")
-        if st.button("Check available OpenAI models"):
+    if configuration["script_provider"] in {"openai", "anthropic"}:
+        st.warning("The selected script provider receives your supplied material. This authorizes text generation only, never a video upload or cloud video request.")
+        if configuration["script_provider"] == "openai" and st.button("Check available OpenAI models"):
             try:
                 st.info("Available supported models: " + ", ".join(api.openai_models()))
             except ContentAPIError as error:
@@ -55,7 +55,7 @@ def script_workshop(api, configuration, category, region, limit):
     active = any(item["status"] in {"queued", "running"} for item in attempts)
     uncertain = st.session_state.get("script_submission_uncertain", False)
     if st.button("Generate script draft", disabled=active or uncertain or (
-        configuration["script_provider"] == "openai" and not authorization
+        configuration["script_provider"] in {"openai", "anthropic"} and not authorization
     )):
         try:
             result = api.create_script(configuration, context, authorization)

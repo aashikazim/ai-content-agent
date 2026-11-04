@@ -49,7 +49,7 @@ function plannedReasons(configuration, catalog) {
     const model = provider?.models.find(item => item.id === configuration[`${kind}_model`]);
     if (!provider?.implemented || !model || model.implemented === false) reasons.push(`${provider?.label || titleCase(kind)} integration is planned.`);
   }
-  if (configuration.script_provider === 'openai' && !catalog.script_providers.find(item => item.id === 'openai')?.configured) reasons.push('Configure OPENAI_API_KEY on the server to use OpenAI scripts.');
+  if (['openai', 'anthropic'].includes(configuration.script_provider) && !catalog.script_providers.find(item => item.id === configuration.script_provider)?.configured) reasons.push('Configure the selected script provider API key on the server.');
   if (configuration.duration_seconds < 30 || configuration.duration_seconds > 60) reasons.push('The local pipeline currently supports 30–60 seconds.');
   if (configuration.narration !== 'local_tts') reasons.push('Model-generated audio is planned for a later phase.');
   if (configuration.captions !== 'scene_text') reasons.push('Timed captions are planned for a later phase.');
@@ -58,7 +58,7 @@ function plannedReasons(configuration, catalog) {
   return reasons;
 }
 
-export default function GenerationForm({ request, onCreated }) {
+export default function GenerationForm({ request, onCreated, onLocalStudio }) {
   const [catalog, setCatalog] = useState(null);
   const [configuration, setConfiguration] = useState(null);
   const [drafts, setDrafts] = useState([]);
@@ -82,11 +82,11 @@ export default function GenerationForm({ request, onCreated }) {
     Promise.allSettled([request('/generation/catalog'), request('/generation/configurations')]).then(([catalogResult, draftResult]) => {
       if (!active) return;
       if (catalogResult.status === 'fulfilled') {
-        setCatalog(catalogResult.value);
+        setCatalog({...catalogResult.value, video_providers: catalogResult.value.video_providers.filter(item => item.id !== 'local_cinematic')});
         setConfiguration(catalogResult.value.defaults);
       } else setLoadError(catalogResult.reason.message);
       if (draftResult.status === 'fulfilled') {
-        setDrafts(draftResult.value.configurations || []);
+        setDrafts((draftResult.value.configurations || []).filter(item => draftConfig(item)?.video_provider !== 'local_cinematic'));
         setDraftError('');
       } else setDraftError(`Saved settings could not be loaded. ${draftResult.reason.message}`);
     });
@@ -154,7 +154,7 @@ export default function GenerationForm({ request, onCreated }) {
   async function create(event) {
     event.preventDefault();
     if (busy || jobAttempted) return;
-    if (configuration.script_provider === 'openai' && !videoAuthorization) { setError('Review and confirm the OpenAI script cost before creating this video.'); return; }
+    if (['openai', 'anthropic'].includes(configuration.script_provider) && !videoAuthorization) { setError('Review and confirm the script cost before creating this video.'); return; }
     setBusy('create');
     setError('');
     setMessage('');
@@ -185,10 +185,11 @@ export default function GenerationForm({ request, onCreated }) {
   const videoModel = videoProvider?.models.find(item => item.id === configuration.video_model);
   const blockers = plannedReasons(configuration, catalog);
   const contentType = catalog.content_types.find(item => item.id === configuration.content_type);
-  const isCloud = configuration.script_provider === 'openai' || ['google','runway','kling'].includes(configuration.video_provider);
+  const isCloud = ['openai', 'anthropic'].includes(configuration.script_provider) || ['google','runway','kling'].includes(configuration.video_provider);
 
   return <div className="generation-workspace">
     <div className="generation-intro"><Symbol /><div><strong>A clear plan before the first frame.</strong><p>Choose script and visual models independently. Local video and short-form script drafts are available. OpenAI scripts and cloud video require separate cost authorization. Final assembly runs locally.</p></div><span className="generation-badge available">PHASE {catalog.phase}</span></div>
+    {onLocalStudio && <div className="generation-message">For LTX, Wan and hybrid moving video, <button type="button" className="button subtle" onClick={onLocalStudio}>Open Local Video Studio</button></div>}
     <form onSubmit={create}>
       <fieldset disabled={Boolean(busy)} className="generation-fieldset">
         <div className="generation-layout">
@@ -256,8 +257,8 @@ export default function GenerationForm({ request, onCreated }) {
             <div className={`generation-readiness ${blockers.length ? 'planned' : ''}`}><strong><span />{configuration.video_provider === 'local_cinematic' ? 'Local cinematic workflow' : blockers.length ? 'Configuration only' : 'Local configuration'}</strong><p>{configuration.video_provider === 'local_cinematic' ? 'Draft a shot plan in the script workshop, then start local GPU shots in the production panel below. The legacy illustrated-generation button is separate.' : ['google', 'runway'].includes(configuration.video_provider) && catalog.phase >= 3 ? 'Draft a shot plan in the script workshop, then authorize cloud clips in the production panel below.' : blockers.length ? 'Save these settings for a future integration. Generation is currently unavailable for this combination.' : 'Check your settings, then start a local generation job. Model and service setup must be complete.'}</p></div>
             {blockers.length > 0 && <ul className="generation-blockers">{blockers.map(reason => <li key={reason}>{reason}</li>)}</ul>}
             {isCloud && <p className="generation-cost-note">An API credential never authorizes a charge. Scripts and cloud video need separate quotes and confirmation.</p>}
-            {catalog.phase >= 2 && configuration.script_provider === 'openai' && configuration.video_provider === 'local' && <PaidScriptAuthorization request={request} configuration={configuration} context={{ category, region: region.toUpperCase(), limit: Number(limit) }} purpose="video" onChange={setVideoAuthorization} />}
-            <div className="generation-actions"><button className="button subtle" type="button" onClick={check} disabled={Boolean(busy)}>{busy === 'check' ? 'Checking…' : 'Check configuration'}</button><button className="button primary" type="submit" disabled={Boolean(busy) || blockers.length > 0 || jobAttempted || (configuration.script_provider === 'openai' && !videoAuthorization)}>{busy === 'create' ? 'Starting…' : jobAttempted ? 'Request submitted' : 'Start local generation'}<span aria-hidden="true">↗</span></button><button className="button generation-save" type="button" onClick={saveDraft} disabled={Boolean(busy)}>{busy === 'save' ? 'Saving…' : 'Save settings'}</button></div>
+            {catalog.phase >= 2 && ['openai', 'anthropic'].includes(configuration.script_provider) && configuration.video_provider === 'local' && <PaidScriptAuthorization request={request} configuration={configuration} context={{ category, region: region.toUpperCase(), limit: Number(limit) }} purpose="video" onChange={setVideoAuthorization} />}
+            <div className="generation-actions"><button className="button subtle" type="button" onClick={check} disabled={Boolean(busy)}>{busy === 'check' ? 'Checking…' : 'Check configuration'}</button><button className="button primary" type="submit" disabled={Boolean(busy) || blockers.length > 0 || jobAttempted || (['openai', 'anthropic'].includes(configuration.script_provider) && !videoAuthorization)}>{busy === 'create' ? 'Starting…' : jobAttempted ? 'Request submitted' : 'Start local generation'}<span aria-hidden="true">↗</span></button><button className="button generation-save" type="button" onClick={saveDraft} disabled={Boolean(busy)}>{busy === 'save' ? 'Saving…' : 'Save settings'}</button></div>
             <p className="generation-human-note"><span aria-hidden="true">◇</span> Generation creates a draft video. Approval and publishing each require your separate action.</p>
           </aside>
         </div>
@@ -270,7 +271,7 @@ export default function GenerationForm({ request, onCreated }) {
         {message && <Message>{message}</Message>}
       </div>
     </form>
-    {catalog.phase >= 2 && <ScriptWorkshop request={request} configuration={configuration} category={category} region={region} limit={limit} />}
-    {catalog.phase >= 3 && <CloudProduction editModels={catalog.runway_edit_models || []} request={request} />}
+    {catalog.phase >= 2 && <ScriptWorkshop scope="cloud" request={request} configuration={configuration} category={category} region={region} limit={limit} />}
+    {catalog.phase >= 3 && <CloudProduction scope="cloud" editModels={catalog.runway_edit_models || []} request={request} />}
   </div>;
 }

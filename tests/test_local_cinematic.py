@@ -179,11 +179,13 @@ def test_metrics_sanitize_unknown_values(local_service):
 def test_worker_isolation_secrets_and_dead_heartbeat(tmp_path,monkeypatch):
     monkeypatch.setenv('LOCAL_CINEMATIC_ROOT',str(tmp_path))
     monkeypatch.setenv('OPENAI_API_KEY','never-inherit')
+    monkeypatch.setenv('ANTHROPIC_API_KEY','never-inherit-claude')
     monkeypatch.setattr(LocalCinematicService,'check_model',lambda self:{})
     popen=Mock(return_value=Mock(pid=42));monkeypatch.setattr('app.services.local_cinematic_service.subprocess.Popen',popen)
     snapshot=LocalCinematicService(config()).submit('A moving actor',aspect_ratio='16:9',local_inputs={'shot_number':1})
     args,kw=popen.call_args
     assert args[0][0]==str(tmp_path/'venv/bin/python') and 'OPENAI_API_KEY' not in kw['env']
+    assert 'ANTHROPIC_API_KEY' not in kw['env']
     assert Path(args[0][1]).is_file()
     assert kw['env']['HF_HUB_OFFLINE']=='1' and kw['start_new_session']
     assert kw['env']['HF_HOME']==str(tmp_path/'cache/huggingface')

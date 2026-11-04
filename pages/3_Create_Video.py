@@ -291,10 +291,10 @@ if executable:
     st.success("These settings can run locally. Generation will stop at manual review.")
 elif video_provider == 'local':
     st.info("Generation is unavailable for these settings. Planned integrations can be saved as drafts after any validation issues are resolved.")
-st.caption("OpenAI scripts require separate paid authorization. Approval and publishing remain separate manual actions.")
+st.caption("Paid scripts require separate paid authorization. Approval and publishing remain separate manual actions.")
 
 video_authorization = None
-if catalog.get("phase", 1) >= 2 and script_provider == "openai" and video_provider == "local":
+if catalog.get("phase", 1) >= 2 and script_provider in {"openai", "anthropic"} and video_provider == "local":
     st.subheader("Authorize this video's script cost")
     video_authorization = paid_authorization(api, configuration, {
         "category": category, "region": region, "limit": int(limit), "purpose": "video"
@@ -318,7 +318,7 @@ if save.button("Save settings", use_container_width=True):
 if create.button(
     "Start local generation", type="primary", use_container_width=True,
     disabled=not executable or bool(st.session_state.get("_create_video_uncertain")) or (
-        script_provider == "openai" and not video_authorization
+        script_provider in {"openai", "anthropic"} and not video_authorization
     ),
 ):
     try:

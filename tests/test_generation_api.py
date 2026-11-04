@@ -35,7 +35,7 @@ def generation_api(tmp_path, monkeypatch):
     monkeypatch.setenv("CONTENT_API_KEY", "generation-test-key")
     monkeypatch.setenv("OLLAMA_MODEL", "qwen3:8b")
     monkeypatch.setenv("IMAGE_MODEL_ID", "stable-diffusion-v1-5/stable-diffusion-v1-5")
-    for name in ("OPENAI_API_KEY", "GEMINI_API_KEY", "KLING_API_KEY", "RUNWAYML_API_SECRET"):
+    for name in ("OPENAI_API_KEY", "GEMINI_API_KEY", "KLING_API_KEY", "RUNWAYML_API_SECRET", "ANTHROPIC_API_KEY"):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setattr(routes, "DB_PATH", str(db_path))
     monkeypatch.setattr(
@@ -87,8 +87,8 @@ def test_generation_reads_require_authentication(generation_api, path):
 
 def test_catalog_distinguishes_credentials_adapter_and_model_access(generation_api, monkeypatch):
     api = generation_api
-    dummy_secrets = ["dummy-openai-private-value", "dummy-gemini-private-value", "dummy-kling-private-value", "dummy-runway-private-value"]
-    for name, value in zip(("OPENAI_API_KEY", "GEMINI_API_KEY", "KLING_API_KEY", "RUNWAYML_API_SECRET"), dummy_secrets):
+    dummy_secrets = ["dummy-openai-private-value", "dummy-gemini-private-value", "dummy-kling-private-value", "dummy-runway-private-value", "dummy-claude-private-value"]
+    for name, value in zip(("OPENAI_API_KEY", "GEMINI_API_KEY", "KLING_API_KEY", "RUNWAYML_API_SECRET", "ANTHROPIC_API_KEY"), dummy_secrets):
         monkeypatch.setenv(name, value)
     response = api.client.get("/api/v1/generation/catalog", headers=api.api_headers)
     assert response.status_code == 200
@@ -230,7 +230,7 @@ def test_conflicting_legacy_and_nested_image_modes_are_rejected(generation_api):
 ])
 def test_cloud_models_never_queue_or_execute_even_with_credentials_and_confirmation(generation_api, monkeypatch, changes):
     api = generation_api
-    for name in ("OPENAI_API_KEY", "GEMINI_API_KEY", "KLING_API_KEY", "RUNWAYML_API_SECRET"):
+    for name in ("OPENAI_API_KEY", "GEMINI_API_KEY", "KLING_API_KEY", "RUNWAYML_API_SECRET", "ANTHROPIC_API_KEY"):
         monkeypatch.setenv(name, "dummy-key-for-guard-test")
     config = configuration(**changes, paid_generation_confirmed=True)
     response = api.client.post("/api/v1/generation/preflight", headers=api.api_headers,

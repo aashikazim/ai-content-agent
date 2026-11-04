@@ -14,13 +14,17 @@ from app.services.openai_script_service import (
     INPUT_USD_PER_MILLION, OUTPUT_USD_PER_MILLION, script_limits,
 )
 from app.services.provider_catalog import validate_for_script
+from app.services import anthropic_script_service as claude
+
+PAID_SCRIPT_PROVIDERS = {"openai", "anthropic"}
 
 
 class ScriptGenerationService:
-    def __init__(self, db_path, *, openai_factory=None, local_factory=None):
+    def __init__(self, db_path, *, openai_factory=None, local_factory=None, anthropic_factory=None):
         self.storage = GenerationStorage(db_path)
         self.openai_factory = openai_factory or OpenAIScriptService
         self.local_factory = local_factory
+        self.anthropic_factory = anthropic_factory or claude.AnthropicScriptService
         with self.storage.connect() as conn:
             conn.execute("""CREATE TABLE IF NOT EXISTS script_generation_quotes (
                 quote_id TEXT PRIMARY KEY, actor TEXT NOT NULL, request_hash TEXT NOT NULL,
@@ -62,19 +66,27 @@ class ScriptGenerationService:
     @staticmethod
     def maximum_cost(config=None):
         limits = script_limits(config)
-        return (Decimal(limits['input_tokens_estimate']) * INPUT_USD_PER_MILLION
-                + Decimal(limits['max_output_tokens']) * OUTPUT_USD_PER_MILLION) / 1_000_000
+        rates = ScriptGenerationService.rates(config.script_provider if config else 'openai')
+        return (Decimal(limits['input_tokens_estimate']) * rates[0]
+                + Decimal(limits['max_output_tokens']) * rates[1]) / 1_000_000
+
+    @staticmethod
+    def rates(provider):
+        return ((claude.INPUT_USD_PER_MILLION, claude.OUTPUT_USD_PER_MILLION)
+                if provider == 'anthropic' else (INPUT_USD_PER_MILLION, OUTPUT_USD_PER_MILLION))
 
     def quote(self, request, actor):
         config = GenerationConfig.model_validate(request["configuration"])
         validate_for_script(config)
-        if config.script_provider != "openai":
+        if config.script_provider not in PAID_SCRIPT_PROVIDERS:
             return {"paid": False, "maximum_cost_usd": "0", "quote_id": None}
         maximum = self.maximum_cost(config)
         limits = script_limits(config)
         if config.max_cost_usd < maximum:
             raise ValueError(f"The configured budget is below the conservative script bound of ${maximum}")
-        self.openai_factory(config.script_model).check_model()
+        factory = self.anthropic_factory if config.script_provider == 'anthropic' else self.openai_factory
+        factory(config.script_model).check_model()
+        rates = self.rates(config.script_provider)
         identifier, expiry = str(uuid4()), int(time.time()) + 600
         with self.storage.connect() as conn:
             conn.execute("INSERT INTO script_generation_quotes VALUES (?, ?, ?, ?, ?, ?, NULL)",
@@ -82,23 +94,24 @@ class ScriptGenerationService:
         return {"quote_id": identifier, "paid": True, "maximum_cost_usd": str(maximum),
                 "expires_at": expiry, "model": config.script_model,
                 "max_input_bytes": limits['max_input_bytes'], "max_output_tokens": limits['max_output_tokens'],
-                "pricing": {"input_per_million_usd": INPUT_USD_PER_MILLION,
-                            "output_per_million_usd": OUTPUT_USD_PER_MILLION,
-                            "checked_on": "2026-11-03"},
+                "provider": config.script_provider,
+                "pricing": {"input_per_million_usd": rates[0],
+                            "output_per_million_usd": rates[1],
+                            "checked_on": "2026-11-04" if config.script_provider == 'anthropic' else "2026-11-03"},
                 "notice": "One script request only. Reasoning is included in output tokens. Actual cost may be lower; no automatic retries.",
-                "source_url": "https://developers.openai.com/api/docs/models/" + config.script_model}
+                "source_url": claude.PRICING_URL if config.script_provider == 'anthropic' else "https://developers.openai.com/api/docs/models/" + config.script_model}
 
     def reserve(self, conn, request, actor, *, job_id=None, quote_id=None, confirmed=False):
         config = GenerationConfig.model_validate(request["configuration"])
         validate_for_script(config)
         now = int(time.time())
         maximum = None
-        if config.script_provider == "openai":
+        if config.script_provider in PAID_SCRIPT_PROVIDERS:
             if confirmed is not True or not quote_id:
                 raise ValueError("A current script cost quote and explicit confirmation are required")
-            if conn.execute("SELECT 1 FROM script_generation_attempts WHERE provider = 'openai' AND status IN ('queued','running') LIMIT 1").fetchone():
+            if conn.execute("SELECT 1 FROM script_generation_attempts WHERE provider IN ('openai','anthropic') AND status IN ('queued','running') LIMIT 1").fetchone():
                 raise ValueError("A paid script request is already active; inspect its history before starting another")
-            previous = conn.execute("SELECT request_json FROM script_generation_attempts WHERE provider = 'openai' AND status = 'needs_reconciliation'").fetchall()
+            previous = conn.execute("SELECT request_json FROM script_generation_attempts WHERE provider IN ('openai','anthropic') AND status = 'needs_reconciliation'").fetchall()
             if any(self.fingerprint(json.loads(item["request_json"])) == self.fingerprint(request) for item in previous):
                 raise ValueError("An identical paid request needs reconciliation; inspect provider usage before a new attempt")
             quote = conn.execute("SELECT * FROM script_generation_quotes WHERE quote_id = ?", (str(quote_id),)).fetchone()
@@ -211,6 +224,8 @@ class ScriptGenerationService:
                 prompt += "\nPrevious script draft (revise only as requested):\n" + json.dumps(parent["production_plan"])
             if config.script_provider == "openai":
                 provider = self.openai_factory(config.script_model)
+            elif config.script_provider == "anthropic":
+                provider = self.anthropic_factory(config.script_model)
             else:
                 from app.services.llm_service import LLMService
                 provider = self.local_factory(config.script_model) if self.local_factory else LLMService(model=config.script_model, request_timeout=900 if config.content_type=='long_drama' else 180)
@@ -235,17 +250,19 @@ class ScriptGenerationService:
         output_tokens = number(usage.get("output_tokens"))
         details = usage.get("output_tokens_details") or {}
         reasoning = number(details.get("reasoning_tokens")) if isinstance(details, dict) else None
-        cost = None
-        if input_tokens is not None and output_tokens is not None:
-            cost = str((Decimal(input_tokens) * INPUT_USD_PER_MILLION
-                        + Decimal(output_tokens) * OUTPUT_USD_PER_MILLION) / 1_000_000)
         with self.storage.connect() as conn:
             kind = conn.execute("SELECT provider FROM script_generation_attempts WHERE attempt_id = ?", (identifier,)).fetchone()
+        provider_id = kind['provider'] if kind else 'openai'
+        rates = self.rates(provider_id)
+        cost = None
+        if input_tokens is not None and output_tokens is not None:
+            cost = str((Decimal(input_tokens) * rates[0]
+                        + Decimal(output_tokens) * rates[1]) / 1_000_000)
         if kind and kind["provider"] == "ollama":
             input_tokens = output_tokens = reasoning = None
             cost = "0"
         response_id = getattr(provider, "last_response_id", None)
-        if not isinstance(response_id, str) or not response_id.startswith("resp_"):
+        if not isinstance(response_id, str) or not response_id.startswith('msg_' if provider_id == 'anthropic' else 'resp_'):
             response_id = None
         with self.storage.connect() as conn:
             conn.execute("""UPDATE script_generation_attempts SET status = ?, result_json = ?,
@@ -285,6 +302,7 @@ Return the complete ProductionPlan JSON schema."""
                 'For Wan-only animation every shot contains exactly one character; driving motion will be explicitly selected later. '
                 'For hybrid, single-character shots use LTX motion/audio followed by Wan identity animation; '
                 'establishing and multi-character shots use LTX only. Use shot/reverse-shot dialogue when identity animation is needed. '
+                'Prefer connected 5-second shots where practical; keep narration brief enough for natural delivery. '
                 'Never invent references or motion clip IDs. Native output is low resolution and will be upscaled locally; do not promise native 1080p.')
         if config.video_provider != 'runway':
             return ''

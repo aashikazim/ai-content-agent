@@ -154,7 +154,7 @@ class ContentWorkflow:
 
         configuration = state.get("generation_config")
         config = GenerationConfig.model_validate(configuration) if configuration else None
-        if config and config.script_provider == "openai":
+        if config and config.script_provider in {"openai", "anthropic"}:
             plan = ScriptGenerationService(self.jobs.db_path).run_for_job(
                 state["job_id"], state["videos"]
             )

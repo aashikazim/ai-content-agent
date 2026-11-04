@@ -12,13 +12,13 @@ Local moving footage now has a separate **Local cinematic** provider: LTX-2.5, W
 
 | Area | Current status |
 | --- | --- |
-| Script, character and shot planning | Independently selectable local Ollama or explicitly authorized OpenAI; validated screenplays, dialogue and revision history |
+| Script, character and shot planning | Independently selectable local Ollama or explicitly authorized OpenAI / Claude; validated screenplays, dialogue and revision history |
 | Moving video | Local LTX-2.5 / Wan-Animate-2 / hybrid; Google Gemini; Runway with manually selected supported models |
 | Legacy local rendering | Existing text-card/diffusion-image renderer retained as an illustrated preview |
 | Duration | Short productions: 30–60 seconds, up to 12 shots. Long drama: 120–1200 seconds, up to 240 shots, with Runway or Local cinematic |
 | Editing and regeneration | Immutable shot candidates and manual replacement; Gemini edits/extensions and Runway visual edits/final-frame continuation; local cinematic regeneration only |
 | Verified local output | Real LTX/Wan/hybrid clips, a 30-second drama and an 18-shot **180-second image-conditioned film**; real regeneration preserved all originals |
-| Latest automated checks | **501 Python tests**, **37 frontend tests**, production frontend build and whitespace checks passed |
+| Latest automated checks | **226 focused Python tests**, **44 frontend tests**, production frontend build and whitespace checks passed; prior full-suite baseline: 501 Python tests |
 | Review and publishing | Technical checks → human quality review → manual approval → separate manual publishing; uncertain uploads are never automatically retried |
 
 The 3-minute validation film is 1280×720 at 24 fps with native audio and local captions. It remains `awaiting_quality_review`; the separate regeneration demo remains `awaiting_shot_selection`. Validation databases/media are private and separate from normal application jobs. Four-minute assembly has synthetic-media coverage; an actual 240-second neural film was not rendered. Speech accuracy, acting, identity/voice continuity and caption timing still need human inspection.
@@ -46,6 +46,7 @@ uvicorn server:app --host 127.0.0.1 --port 8000
 Open **http://127.0.0.1:8000** and sign in. For a remote DGX, forward port 8000 over SSH and open the forwarded localhost URL. Node is only needed to develop/build the frontend; the built dashboard is served by Python. Rebuild after changing frontend source.
 
 - **Overview:** actual job counts, recent content, publication status, and latest collected analytics. Empty states are shown when no data exists.
+- **Local Video Studio:** dedicated React LTX/Wan/hybrid creation from your own story or screenplay, with Claude or Ollama planning, character guidance, previews and shot regeneration. Cloud/illustrated creation stays in **Create video**.
 - **Review Queue:** authenticated video playback, scene images, script/storyboard, available provenance, and an explicit review checklist. Approval and rejection only update review state.
 - **Publishing:** approved videos, destination selection, dry-run validation by default, a separate live-upload confirmation, and publication history. An existing job/platform attempt blocks another upload; an inspected Facebook failure can be manually reauthorized using the command below. Uncertain outcomes require reconciliation.
 
@@ -60,6 +61,38 @@ Existing scheduler requests still use `CONTENT_API_KEY`. Manual API review now r
 YouTube resumable uploads continue through acknowledged chunks, but failed chunk requests are not automatically retried, including HTTP 5xx responses. The existing reservation remains for reconciliation; a new upload attempt requires human intervention.
 
 > **Verification boundary:** Days 1–7 and subsequent provider/dashboard/cinematic extensions are implemented. Real local video generation and assembly are verified; paid providers and uploads are mocked in automated tests. Facebook token provisioning was verified on 2026-11-03, but permissions remain revocable and a successful live upload is not claimed. Unattended deployment, account-specific cloud quality/billing, licensed stock acquisition and neural local TTS require separate work or manual validation.
+
+## Local Video Studio and Claude screenplay planning
+
+Open **Local Video Studio** in the React sidebar. This page uses manual story input, with no trend discovery. Existing local scripts and productions remain accessible through local history. The cloud creation page shows cloud history. Completed scripts retain their saved generation settings; changing those settings requires a new or revised screenplay.
+
+Add your private Anthropic API key to the existing local `.env`, then restart FastAPI:
+
+```dotenv
+ANTHROPIC_API_KEY=
+```
+
+Claude Sonnet 5.5 is the default screenplay/scene planner on this page; **Local Ollama** is available under **Advanced settings**. OpenAI remains available elsewhere. The adapter uses the existing `requests` dependency and official [Claude Messages API](https://platform.claude.com/docs/en/api/messages/create), so no new Python dependency or GPU-environment change is needed. Model, pricing and [structured-output](https://platform.claude.com/docs/en/build-with-claude/structured-outputs) documentation was checked on November 4, 2026. Live account access was not tested.
+
+1. Enter **My idea** or **My screenplay**, then choose realistic drama, animation or comedy/satire.
+2. Choose a **30/45/60-second Short** or **2/3/4-minute film**, portrait/landscape, and LTX/Wan/hybrid. Longer animation/comedy uses the existing fictional long-drama screenplay contract with the selected visual style. Broader existing backend duration limits remain unchanged.
+3. Defaults are **720p export, 24 fps, timed captions**, and roughly five-second connected shots. Export resolution, text/image input, narration, script provider and script budget are in Advanced settings. Native inference dimensions remain at the verified profiles; changing export size does not reduce model memory requirements.
+4. Check the script cost estimate, explicitly authorize one request, then click **Generate script draft**. Claude receives your story and revision text. The checked standard rate is $2/million input tokens and $10/million output tokens; the conservative estimate includes output/thinking allowance. Actual provider billing remains authoritative. No tools, explicit prompt caching, model fallback or paid automatic retries are requested. Uncertain requests require manual reconciliation before an identical resubmission.
+5. Inspect characters, dialogue, actions and timed shots. The completed draft is selected automatically in the production panel. Add the required references, click **Prepare local generation**, review and confirm local GPU work. The local video-provider fee estimate is $0; screenplay cost and local runtime/electricity are separate.
+6. Preview the clips and assembled film. Regenerate individual shots when necessary and explicitly select replacements. Quality inspection, approval and publishing remain separate manual actions.
+
+| Model | Required media | Audio and character guidance |
+| --- | --- | --- |
+| LTX text mode | None | Describe actors, outfits, location and voices. Native audio or local narration. Text descriptions cannot guarantee identical faces across shots. |
+| LTX image mode | A composed scene-start image per shot, or an explicitly shared frame | Include the setting and framing. An identity portrait alone is not a complete scene. |
+| Wan | Matching character image and a driving MP4 covering each shot | Exactly one actor per shot. Wan is silent; local single-narrator TTS is added during assembly and does not guarantee dialogue lip sync. |
+| Hybrid | Identity images for single-character shots; scene-start images additionally required in image mode | LTX supplies motion/audio to Wan. No driving upload is needed. Establishing and multi-character shots use LTX only. |
+
+After drafting, expand **Add character images or scene-start images**. **Fill details for …** copies a screenplay character's exact ID and description into the upload form. Save identity images with those IDs; use IDs such as `scene_1` for composed scene-start images. Select identity references, scene-start frames and Wan driving clips in their separate controls. Existing image/video permission, integrity and size checks apply.
+
+Try **Example: The Missing Lunch** → **Load this example**: a 30-second office comedy featuring Maya, Theo and a missing lunchbox. Loading performs no generation. Start with LTX text mode and no uploads. For hybrid, provide separate Maya/Theo identity images after drafting and use individual close-ups for Wan animation. Faces, clothing, voices, exact speech and caption timing still need human inspection.
+
+SQLite already stores provider/model names as text with configuration JSON and immutable versions; no migration is required. Tests mock Anthropic and local generation; this interface update performs no paid API calls or real neural generation.
 
 <a id="google-video-production"></a>
 
@@ -154,7 +187,7 @@ The OpenAI adapter uses [Responses](https://developers.openai.com/api/reference/
 ## Features
 
 - **Trend discovery:** Retrieve popular YouTube videos by region and category; rank candidates using recency, engagement, and view velocity.
-- **Content planning:** Choose Ollama or OpenAI independently of the video provider; validate scripts, character profiles, dialogue, shot timing, titles and revisions.
+- **Content planning:** Choose Ollama, OpenAI or Claude independently of the video provider; validate scripts, character profiles, dialogue, shot timing, titles and revisions.
 - **Video rendering:** Choose illustrated local previews, LTX/Wan/hybrid moving footage, Google or Runway. FFmpeg assembles provider-dependent aspect ratios, 720p/1080p delivery, native/local narration and captions. Local cinematic delivery is explicitly upscaled from its smaller working profile.
 - **Workflow orchestration:** Coordinate trend discovery, content generation, and rendering through LangGraph, with jobs persisted in SQLite.
 - **Human approval:** React and Streamlit provide video/script/provenance review. Moving productions require human quality checks before approval; approval **does not** publish a video.
@@ -168,7 +201,7 @@ The OpenAI adapter uses [Responses](https://developers.openai.com/api/reference/
 
 ```mermaid
 flowchart TD
-    A[React or Streamlit: admin session] --> B[Ollama or OpenAI script workshop]
+    A[React or Streamlit: admin session] --> B[Ollama, OpenAI or Claude script workshop]
     B --> C[Validated screenplay, characters and shots]
     C --> D[Explicit production confirmation]
     D --> E{Selected video provider}
@@ -404,7 +437,7 @@ SCHEDULER_VIDEO_LIMIT=5
 SCHEDULER_IMAGE_MODE=text
 ```
 
-Trend discovery uses `YOUTUBE_API_KEY`. Model settings include `OLLAMA_HOST`, `OLLAMA_MODEL`, `CONTENT_LANGUAGE`, `IMAGE_MODEL_ID` and `TTS_VOICE`; `.env.example` lists current defaults. `OPENAI_API_KEY`, `GEMINI_API_KEY` and `RUNWAYML_API_SECRET` are optional independent cloud credentials. Local cinematic generation needs its isolated checkpoints/runtime, not a video-provider API key. The CLI's `--live` flag or a separately confirmed browser action controls real publication; no `PUBLISH_DRY_RUN` environment switch is read by the current implementation.
+Trend discovery uses `YOUTUBE_API_KEY`. Model settings include `OLLAMA_HOST`, `OLLAMA_MODEL`, `CONTENT_LANGUAGE`, `IMAGE_MODEL_ID` and `TTS_VOICE`; `.env.example` lists current defaults. `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY` and `RUNWAYML_API_SECRET` are optional independent cloud credentials. Local cinematic generation needs its isolated checkpoints/runtime, not a video-provider API key. The CLI's `--live` flag or a separately confirmed browser action controls real publication; no `PUBLISH_DRY_RUN` environment switch is read by the current implementation.
 
 Generate independent API keys with:
 
@@ -572,7 +605,7 @@ python -m pytest tests/test_scheduler.py -v
 python -m pytest tests/test_review_dashboard.py -v
 ```
 
-Latest implementation verification on **2026-11-04**: **501 Python tests passed**, **37 frontend tests passed**, the production frontend build passed and `git diff --check` passed. Recovery baseline:486Python tests; original pre-dashboard baseline:45. Automated tests use temporary data and mocked paid providers/uploads. Real FFmpeg cases cover captions/audio/motion/decoding, edits/continuation and120/192/240-second synthetic-source assembly.
+Latest interface/Claude verification on **2026-11-04**: **226 focused Python tests passed**, **44 frontend tests passed**, the production frontend build passed and `git diff --check` passed. The prior full-suite baseline was **501 Python tests**; that full suite was not repeated for this focused update. New Claude and local-generation calls were mocked; no paid requests or real GPU inference ran. Recovery baseline:486Python tests; original pre-dashboard baseline:45. Automated tests use temporary data and mocked paid providers/uploads. Real FFmpeg cases cover captions/audio/motion/decoding, edits/continuation and120/192/240-second synthetic-source assembly.
 
 Real local-model GPU runs are separate from automated tests: LTX text/image generation, Wan reference animation, hybrid audio preservation, a30-second drama, a180-second/18-shot I2V film and one-shot regeneration were executed on GB10. These used private validation databases and did not approve or publish content. See the local cinematic benchmarks and `CODEX_PROGRESS.md` for artifacts and limits; documentation-only changes do not require rerunning expensive GPU tests.
 
@@ -635,7 +668,7 @@ The next development stage focuses on **content quality**, not additional publis
 
 ### Historical provider verification
 
-These are the results recorded at each earlier milestone. The latest result is501Python /37frontend tests and the real local-model validation described above.
+These are the results recorded at each earlier milestone. The prior full-suite result was501Python /37frontend tests; the current interface update passed226focused Python /44frontend tests. Real local-model validation is described above.
 
 Phase 2 verification: **303 Python tests passed**, including fresh/existing SQLite migrations, strict script validation, cost authorization, uncertain requests, local supplied-source planning, API authorization and Streamlit interactions. **22 frontend tests passed** and the production build passed. Chrome fixture checks verified a mocked OpenAI script submission, desktop/mobile layouts, decoded video playback, manual approval without publication, publishing dry run and live-confirmation cancellation. Paid providers and uploads were mocked; a Phase 1 test rendered and decoded actual temporary FFmpeg/espeak output. These checks do not establish live model availability or improved image/TTS quality.
 
@@ -646,7 +679,7 @@ Confirmation UI follow-up:337Python tests and28frontend tests passed; production
 
 ## Runway Dev API video production
 
-Runway is an additional paid video provider. Local generation and Google Gemini remain available. Script selection stays independent: choose local Ollama or OpenAI, then choose Runway and its exact video model. Runway-hosted Kling models use **only `RUNWAYML_API_SECRET`**; the retired direct Kling provider remains disabled.
+Runway is an additional paid video provider. Local generation and Google Gemini remain available. Script selection stays independent: choose local Ollama, OpenAI or Claude, then choose Runway and its exact video model. Runway-hosted Kling models use **only `RUNWAYML_API_SECRET`**; the retired direct Kling provider remains disabled.
 
 Install the updated Python requirements in the existing Python 3.12 environment, add this optional server-side setting to your private `.env`, and restart the API/dashboard:
 
@@ -788,7 +821,7 @@ Source videos below3MB use bounded data URIs. Larger normalized clips (up to100M
 ### Generate a long drama
 
 1. Choose **Long drama**, **Runway**, a generation model and a120–1200-second target. Increase **Maximum scenes/shots** as needed (up to240). The backend checks whether the model's maximum clip length can cover the requested duration. The default$10video budget may be insufficient; set an explicit budget before requesting quotes.
-2. Choose Ollama or OpenAI independently. A single structured screenplay contains the complete story outline,2–3fictional characters with shared appearance/voice descriptions, scene-linked dialogue and ordered shots. Every scene is at most60seconds; shots exactly cover every scene and preserve its complete narration. Cast/scene references, factual fiction labels, word budgets, total duration and model-specific shot lengths are validated.
+2. Choose Ollama, OpenAI or Claude independently. A single structured screenplay contains the complete story outline,2–3fictional characters with shared appearance/voice descriptions, scene-linked dialogue and ordered shots. Every scene is at most60seconds; shots exactly cover every scene and preserve its complete narration. Cast/scene references, factual fiction labels, word budgets, total duration and model-specific shot lengths are validated.
 3. OpenAI long-screenplay quotes allow up to200,000input bytes and64,000output tokens (including reasoning), with a conservative **$1.06** script bound at the configured standard pricing. Short scripts retain the existing8,000-token/$0.21bound. The request timeout is15minutes, with no automatic paid retry; interrupted-request detection allows for that duration. Local Ollama needs a model/server context large enough for the screenplay; no context enlargement, new model download or silent cloud fallback is performed.
 4. Select the completed screenplay in Cloud video production, assign any permission-confirmed scene/character images, review the full video estimate and authorize the shot batch. Unknown/failed submissions stop further spending; only previously authorized never-submitted shots can be explicitly continued. The production budget includes script estimates, all submitted/uncertain candidates and replacements.
 5. Inspect shots (both dashboards offer a scene filter for large projects), then the assembled MP4. FFmpeg normalizes each selected candidate, adds local/model narration and estimated phrase captions, concatenates the complete timeline, normalizes loudness and validates decoding/audio/duration/dimensions/FPS/motion. Long tasks use longer processing leases and media-validation deadlines; source/final hashes are checked without loading the complete MP4 into memory. Streamlit final-video preview is bounded at1GB; individual clip previews/downloads retain100MBbounds.
@@ -802,7 +835,7 @@ Extension verification: **463 Python tests and34frontend tests passed**, the pro
 
 ## Local cinematic video: LTX-2.5 and Wan-Animate-2
 
-This section supersedes earlier statements that local generation only supports still images, and that long drama requires Runway. Existing local illustrated, Gemini and Runway features remain available. Script generation still independently uses Ollama or explicitly authorized OpenAI. Generation never approves or publishes.
+This section supersedes earlier statements that local generation only supports still images, and that long drama requires Runway. Existing local illustrated, Gemini and Runway features remain available. Script generation independently supports Ollama, OpenAI and Claude; the React Local Video Studio defaults to Claude. Generation never approves or publishes.
 
 Recovery validation status (November4): real LTX5s T2V/audio, six-shot30s drama, Wan5s reference animation, realistic hybrid5s, LTX10s I2V and a full180s/18shot image-conditioned film pass technical checks. The hybrid retains LTX audio (waveform correlation0.99915). The3minute film is1280×720/24fps with native audio/local captions and remains awaiting manual quality review in a separate validation database. A real single-shot regeneration preserved all selected originals and left its new candidate unselected. The192/240s FFmpeg regression cases use synthetic moving sources; actual240s neural generation was not repeated. All501Python tests and37frontend tests/build pass. Text-only face drift and native text artifacts were observed; local prompts now use prose and quoted speaker turns following the [official LTX guide](https://docs.ltx.io/open-source-model/usage-guides/prompting-guide), but full continuity/speech/text inspection remains manual. `CODEX_PROGRESS.md` records exact IDs, artifacts and resume steps; completed tests/downloads need no rerun after a restart, and technical checks never approve or publish.
 
@@ -864,12 +897,12 @@ New local tasks snapshot these runtime limits. The CUDA allocator cap covers its
 
 ### Generate, inspect and regenerate
 
-1. Restart FastAPI/Streamlit after upgrading; rebuild React with `cd frontend && npm run build`. In either **Create Video** interface select **Local cinematic**, then an exact model. Select text/image mode; Wan-only requires image mode. Keep the script provider independent.
+1. Restart FastAPI/Streamlit after upgrading; rebuild React with `cd frontend && npm run build`. In React open **Local Video Studio**; in Streamlit **Create Video**, select **Local cinematic**, then an exact model. Select text/image mode; Wan-only requires image mode. Keep the script provider independent.
 2. For an initial production use30seconds. Choose **Long drama** and180–240seconds for a3–4-minute screenplay after the smoke and30-second checks pass. Increase Maximum shots to cover the duration with3–10-second shots; for example,240seconds needs at least24 ten-second shots. Existing long-plan limits remain120–1200seconds/up to240shots.
-3. Use **Source: your script** to adapt a supplied screenplay, or a topic for a new one. The existing structured script workshop validates dialogue, actions, cast IDs, exact narration/timing and shot coverage. Its shared character/wardrobe/location/voice descriptions persist for the entire film. An OpenAI screenplay still needs its own paid authorization; an Ollama screenplay has no provider fee.
+3. Use **Source: your script** to adapt a supplied screenplay, or a topic for a new one. The existing structured script workshop validates dialogue, actions, cast IDs, exact narration/timing and shot coverage. Its shared character/wardrobe/location/voice descriptions persist for the entire film. An OpenAI or Claude screenplay still needs its own paid authorization; an Ollama screenplay has no provider fee.
 4. In the production panel choose that completed screenplay. Reuse the permission-confirmed character registry. LTX image mode uses composed scene start frames selected explicitly per shot or as a shared frame; independent identity portraits are not silently treated as scene compositions. LTX text mode conditions cast appearance through the screenplay, not an independent portrait-image channel.
 5. Wan-only needs exactly one actor per shot, a matching character reference and a driving MP4 at least as long as the shot. Upload original/permitted3–10-second MP4s, at most20MB/1920px/60fps, and record rights. Input clips are hashed, motion-checked, private and quote-bound. Hybrid single-actor shots use their newly generated LTX footage instead; establishing/multi-actor shots explicitly use LTX only. Use shot/reverse-shot planning for recurring-character dialogue.
-6. Prepare the generation request and confirm local GPU work. The video provider estimate is$0; electricity/runtime are not free, and any separate OpenAI script estimate remains in the production budget. No video input is uploaded. Saved settings do not start work.
+6. Prepare the generation request and confirm local GPU work. The video provider estimate is$0; electricity/runtime are not free, and any separate paid script estimate remains in the production budget. No video input is uploaded. Saved settings do not start work.
 7. Existing LangGraph/SQLite orchestration saves each local generation UUID, immutable versions and selected clips. Detached controllers serialize GPU work with a process lock. Each LTX/Wan stage runs in a separate child and fully exits before the next loads. The lock descriptor stays with an active neural child if its controller crashes. Safe refresh only inspects existing task state/downloads/assembles; it never restarts generation.
 8. Inspect stage progress, elapsed/queue time and peak memory, then preview actual clips and the FFmpeg MP4. Stage fractions are coarse milestones, not an ETA. Numerical measurements and pinned checkpoint provenance accompany the selected footage. An inactive heartbeat becomes `needs_reconciliation`; inspect the private task diagnostics before another attempt. A known failed shot can be regenerated manually; there is no automatic fallback or retry.
 9. **Regenerate this shot** creates another candidate with a version-specific deterministic seed and preserves the selected original. Select the replacement explicitly. Cloud edit/continuation remains available; these local models currently expose regeneration only. FFmpeg checks motion, duration, decoding and requested audio, then adds the existing narration/captions and normalizes the final output. Missing/still clips block review.

@@ -9,6 +9,7 @@ import os
 from app.models.generation_config import DEFAULT_IMAGE_MODEL, GenerationConfig
 from app.services.runway_models import EDIT_MODELS, catalog_models, validate as validate_runway
 from app.services import local_cinematic_models
+from app.services.anthropic_script_service import ANTHROPIC_MODEL
 
 
 VERIFIED_ON = "2026-11-03"
@@ -102,6 +103,14 @@ def get_catalog() -> dict:
              "reason": "Script adapter implemented. A configured API key, account model check and single-use cost confirmation are required. No automatic fallback or paid retries.",
              "models": [openai, {**openai, "id": "gpt-6-sol", "label": "GPT-6 Sol (explicit alternative)",
                                   "source_url": "https://developers.openai.com/api/docs/models/gpt-6-sol"}]},
+            {"id": "anthropic", "label": "Claude (Anthropic)",
+             "configured": bool(os.getenv('ANTHROPIC_API_KEY')), "implemented": True,
+             "executable": bool(os.getenv('ANTHROPIC_API_KEY')), "account_access": "unverified",
+             "status": "account_access_unverified" if os.getenv('ANTHROPIC_API_KEY') else "not_configured",
+             "reason": "Claude screenplay and shot planning. Server-side ANTHROPIC_API_KEY and explicit script cost confirmation required. No automatic retries or fallback.",
+             "models": [{"id": ANTHROPIC_MODEL, "label": "Claude Sonnet 5.5", "implemented": True,
+                         "structured_output": True, "verified_on": "2026-11-04",
+                         "source_url": "https://platform.claude.com/docs/en/models/sonnet-5-5/overview"}]},
         ],
         "video_providers": [
             {"id": "local", "label": "Local illustrated preview", "configured": True,
@@ -155,7 +164,8 @@ def validate_for_draft(config: GenerationConfig) -> None:
     Long drafts therefore remain valid for future multi-shot assembly.
     """
     config = GenerationConfig.model_validate(config)
-    expected_scripts = [_local_script_model()] if config.script_provider == "ollama" else [OPENAI_MODEL, "gpt-6-sol"]
+    expected_scripts = {'ollama': [_local_script_model()], 'openai': [OPENAI_MODEL, 'gpt-6-sol'],
+                        'anthropic': [ANTHROPIC_MODEL]}[config.script_provider]
     if config.script_model not in expected_scripts:
         raise ValueError("Unknown script model for the selected provider; choose a model from the catalogue")
     expected_video = {"local": "local-pipeline", "google": GOOGLE_MODEL, "kling": KLING_MODEL}
@@ -188,6 +198,8 @@ def validate_for_script(config: GenerationConfig) -> None:
         raise ValueError("Kling was retired; explicitly choose Google or the local pipeline")
     if config.script_provider == "openai" and not os.getenv("OPENAI_API_KEY"):
         raise ValueError("OPENAI_API_KEY is not configured; choose local Ollama or configure the key on the server")
+    if config.script_provider == "anthropic" and not os.getenv("ANTHROPIC_API_KEY"):
+        raise ValueError("ANTHROPIC_API_KEY is not configured; choose local Ollama or configure the key on the server")
     if config.content_type == 'long_drama':
         if config.video_provider not in {'runway', 'local_cinematic'} or not 120 <= config.duration_seconds <= 1200:
             raise ValueError('Long-form drama needs Runway or local cinematic and a 120–1200-second target')

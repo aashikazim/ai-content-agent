@@ -21,7 +21,7 @@ class GenerationConfig(BaseModel):
     content_type: Literal[
         "realistic_short", "short_drama", "animated_comedy", "long_drama", "news"
     ] = "realistic_short"
-    script_provider: Literal["ollama", "openai"] = "ollama"
+    script_provider: Literal["ollama", "openai", "anthropic"] = "ollama"
     script_model: str = Field(
         default_factory=lambda: os.getenv("OLLAMA_MODEL", "qwen3:8b"),
         min_length=1, max_length=200,

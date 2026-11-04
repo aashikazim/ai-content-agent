@@ -348,9 +348,10 @@ def test_script_workshop_local_submit_never_runs_on_rerender(api_session):
     assert not job_calls(api_session)
 
 
-def test_paid_script_requires_quote_confirmation_and_resets_after_edit(api_session):
+@pytest.mark.parametrize('provider', ['openai', 'anthropic'])
+def test_paid_script_requires_quote_confirmation_and_resets_after_edit(api_session, provider):
     app = page()
-    app.selectbox(key='cv_script_provider').select('openai').run()
+    app.selectbox(key='cv_script_provider').select(provider).run()
     assert button(app, 'Generate script draft').disabled
     app.button(key='script_draft_estimate').click().run()
     assert not app.exception
