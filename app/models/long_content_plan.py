@@ -18,6 +18,9 @@ class LongContentPlan(ContentPlan):
 
 def parse_content_plan(value):
     """Read saved plans without changing existing short-form validation."""
+    if isinstance(value, dict) and value.get('plan_kind') == 'clip_studio':
+        from app.services.clip_studio.review import ClipReviewPlan
+        return ClipReviewPlan.model_validate(value)
     try:
         return ContentPlan.model_validate(value)
     except ValueError:

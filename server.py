@@ -11,6 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from app.api.routes import router
 from app.api.admin_routes import router as admin_router
 from app.api.cloud_routes import router as cloud_router
+from app.api.clip_studio_routes import router as clip_studio_router
 
 app = FastAPI(
     title="AI Content Agent API",
@@ -60,6 +61,7 @@ def health():
 app.include_router(router)
 app.include_router(admin_router)
 app.include_router(cloud_router)
+app.include_router(clip_studio_router)
 
 # The web UI shares the API's origin; cookies also authenticate video requests.
 # Building the UI does not require Node.js on the production server afterwards.

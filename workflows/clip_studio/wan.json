@@ -1,0 +1,49 @@
+{
+  "configured": false,
+  "_instructions": "Replace workflow with a ComfyUI export in API format. Replace every binding [node_id,input_key] and output_node_id with actual IDs. Set configured=true only after testing. Duration binding is seconds: map conversion to frame count inside your workflow. reference and character_reference must be distinct scene and actor conditioning nodes. continuation_reference is the final carry frame; condition as a starting image. source_video binds a video loader. Never bind multiple values to the same input. Output must be 24fps and requested duration.",
+  "max_duration_seconds": 10,
+  "output_node_id": "REPLACE_OUTPUT_NODE_ID",
+  "bindings": {
+    "prompt": [
+      "REPLACE_PROMPT_NODE",
+      "prompt"
+    ],
+    "negative_prompt": [
+      "REPLACE_NEGATIVE_PROMPT_NODE",
+      "negative_prompt"
+    ],
+    "reference": [
+      "REPLACE_REFERENCE_NODE",
+      "reference"
+    ],
+    "duration": [
+      "REPLACE_DURATION_NODE",
+      "duration"
+    ],
+    "width": [
+      "REPLACE_WIDTH_NODE",
+      "width"
+    ],
+    "height": [
+      "REPLACE_HEIGHT_NODE",
+      "height"
+    ],
+    "seed": [
+      "REPLACE_SEED_NODE",
+      "seed"
+    ],
+    "character_reference": [
+      "REPLACE_CHARACTER_REFERENCE_NODE",
+      "character_reference"
+    ],
+    "continuation_reference": [
+      "REPLACE_CONTINUATION_REFERENCE_NODE",
+      "continuation_reference"
+    ],
+    "source_video": [
+      "REPLACE_SOURCE_VIDEO_NODE",
+      "source_video"
+    ]
+  },
+  "workflow": {}
+}

@@ -34,3 +34,9 @@ data/character_references/
 # Isolated cinematic runtimes, checkpoints, task state and private motion inputs
 data/local_cinematic/
 data/driving_references/
+
+# Clip Studio source uploads, temporary work and generated exports
+data/clip_studio/
+
+# Isolated CPU source-analysis environment and Whisper checkpoints
+data/clip_studio_runtime/

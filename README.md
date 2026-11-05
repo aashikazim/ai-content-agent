@@ -47,6 +47,7 @@ Open **http://127.0.0.1:8000** and sign in. For a remote DGX, forward port 8000 
 
 - **Overview:** actual job counts, recent content, publication status, and latest collected analytics. Empty states are shown when no data exists.
 - **Local Video Studio:** dedicated React LTX/Wan/hybrid creation from your own story or screenplay, with Claude or Ollama planning, character guidance, previews and shot regeneration. Cloud/illustrated creation stays in **Create video**.
+- **Clip Studio:** a separate page in the existing sidebar for source-based video regeneration. Supports YouTube/video/images, CPU scene detection and Whisper, selectable Claude/OpenAI planning with explicit cost consent, the existing native LTX/Wan/hybrid continuity runtime, optional user-mapped ComfyUI workflows, chunk caching, previews and per-clip versions. Uses the existing SQLite database. Real initial exports enter manual Review; approval never uploads. `CLIP_STUDIO_MOCK=true` retains the GPU-free demo. See [Clip Studio setup](docs/clip-studio.md).
 - **Review Queue:** authenticated video playback, scene images, script/storyboard, available provenance, and an explicit review checklist. Approval and rejection only update review state.
 - **Publishing:** approved videos, destination selection, dry-run validation by default, a separate live-upload confirmation, and publication history. An existing job/platform attempt blocks another upload; an inspected Facebook failure can be manually reauthorized using the command below. Uncertain outcomes require reconciliation.
 

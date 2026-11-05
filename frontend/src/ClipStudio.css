@@ -1,0 +1,16 @@
+.clip-studio { display: grid; gap: 24px; }
+.clip-studio .clip-studio-layout { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 24px; align-items: start; }
+.clip-studio .clip-source-tabs { margin: 20px 0; display: flex; }
+.clip-studio .clip-source-tabs button { flex: 1; }
+.clip-studio form > label:not(.checkbox-label) { display: block; margin-top: 18px; }
+.clip-studio .generation-grid { margin-top: 18px; }
+.clip-studio .clip-results { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; margin: 20px 0; }
+.clip-studio .clip-result { padding: 20px; min-width: 0; }
+.clip-studio video { display: block; width: 100%; max-height: 400px; object-fit: contain; background: var(--green); border-radius: 9px; margin: 14px 0; }
+.clip-studio .clip-result p { overflow-wrap: anywhere; }
+.clip-studio progress { width: 100%; accent-color: var(--green); }
+.clip-studio .clip-stages { display: flex; gap: 24px; flex-wrap: wrap; color: var(--muted); padding-left: 20px; }
+.clip-studio .clip-version { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--line); }
+.clip-studio .clip-project .section-heading { align-items: start; gap: 18px; }
+@media (max-width: 1100px) { .clip-studio .clip-studio-layout { grid-template-columns: 1fr; } }
+@media (max-width: 700px) { .clip-studio .clip-results { grid-template-columns: 1fr; } }
