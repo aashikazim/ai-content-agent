@@ -25,7 +25,7 @@ def render_dialogue(production, shot, package, directory, renderer):
     for index,(actor,text) in enumerate(speaker_lines(production,shot)):
         if not text.strip():continue
         path=directory/f'line_{index}.wav'
-        TTSService(voice=voices.get(actor,'en-us')).synthesize(text,path)
+        TTSService(voice=voices.get(actor,'en-us'),**({'profile_id':next(a['speech_profile_id'] for a in package['characters'] if a['character_id']==actor)} if any(a.get('speech_profile_id') for a in package['characters'] if a['character_id']==actor) else {})).synthesize(text,path)
         path.chmod(0o600);paths.append(path)
     output=directory/'dialogue.wav'
     if not paths:

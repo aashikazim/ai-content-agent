@@ -138,6 +138,7 @@ class CloudVideoRenderer:
                     sources.append([shot.model_dump(mode='json'),measured,candidate.get('trim_start_seconds',0),candidate.get('model')])
                 settings={'dimensions':[self.width,self.height],'fps':self.config.fps,'narration':self.config.narration,
                     'captions':self.config.captions,'narrator_voice':os.getenv('TTS_VOICE','en-us'),'profile_version':1}
+                if self.config.speech_profile_id:settings['speech_profile_id']=self.config.speech_profile_id
                 key = hashlib.sha256(json.dumps({'scene':scene.model_dump(mode='json'),'sources':sources,
                     'render_settings':settings,'cast':character_package},sort_keys=True).encode()).hexdigest()
                 cache = output_dir.parent / 'scene_cache' / key
@@ -184,7 +185,7 @@ class CloudVideoRenderer:
             audio_filter = 'apad'
             if self.config.narration == 'local_tts':
                 narration = output_dir / f'scene_{scene.scene_number}.wav'
-                TTSService(voice=os.getenv("TTS_VOICE", "en-us")).synthesize(scene.narration, narration)
+                TTSService(voice=os.getenv("TTS_VOICE", "en-us"),**({'profile_id':self.config.speech_profile_id} if self.config.speech_profile_id else {})).synthesize(scene.narration, narration)
                 seconds = self.local_renderer.audio_duration(narration)
                 speed = seconds / scene.duration_seconds
                 if speed > 1.25:
@@ -194,12 +195,27 @@ class CloudVideoRenderer:
             else:
                 command += ['-map', '0:v:0', '-map', '0:a:0']
             # Fixed generated caption filename; use cwd to avoid path/filter escaping.
-            command += ['-vf', f'ass={caption_file.name}', '-af', audio_filter, '-c:v', 'libx264', '-preset', 'veryfast',
+            command += ['-vf', ('null' if self.config.captions in {'asr','aligned'} else f'ass={caption_file.name}'), '-af', audio_filter, '-c:v', 'libx264', '-preset', 'veryfast',
                         '-crf', '21', '-c:a', 'aac', '-ar', '48000', '-ac', '2', '-t', str(scene.duration_seconds), '-movflags', '+faststart', str(output)]
             try:
                 subprocess.run(command, cwd=output_dir, check=True, capture_output=True, timeout=180)
             except (OSError, subprocess.SubprocessError):
                 raise MediaValidationError('Caption/audio assembly failed; verify FFmpeg libass support') from None
+            speech_report = None
+            if self.config.captions in {'asr','aligned'}:
+                from app.services.speech_analysis import analyze_audio,write_word_captions
+                speech_report=analyze_audio(output,output_dir/'speech_analysis',expected=scene.narration,
+                    forced=self.config.captions=='aligned',model=os.getenv('SPEECH_WHISPER_MODEL','base'))
+                write_word_captions(caption_file,speech_report,self.width,self.height)
+                captioned=output_dir/f'captioned_{scene.scene_number}.mp4'
+                try:
+                    subprocess.run(['ffmpeg','-y','-v','error','-i',str(output),'-vf',f'ass={caption_file.name}',
+                        '-c:v','libx264','-preset','veryfast','-crf','21','-c:a','copy',str(captioned)],
+                        cwd=output_dir,check=True,capture_output=True,timeout=180)
+                except (OSError,subprocess.SubprocessError):
+                    raise MediaValidationError('Speech-aligned caption rendering failed') from None
+                captioned.replace(output)
+                timing=[(w['start'],w['end'],w['word']) for w in speech_report.get('aligned_words') or speech_report.get('words',[])]
             # Preview image is extracted from real footage, never a text fallback.
             run(['ffmpeg', '-y', '-v', 'error', '-i', str(output), '-frames:v', '1', str(output_dir / f'scene_{scene.scene_number}.png')])
             scenes.append({'scene_number': scene.scene_number, 'status': 'available', 'duration': scene.duration_seconds,
@@ -207,7 +223,7 @@ class CloudVideoRenderer:
                 'license': 'AI-generated; provider terms and human rights review apply',
                 'attribution': (self.config.video_model + '; Lightricks / Wan-Video' if self.config.video_provider == 'local_cinematic' else 'Powered by Runway' if self.config.video_provider == 'runway' else 'Google Gemini Omni') + '; permission-confirmed user images where selected',
                 'source_url': 'https://github.com/Lightricks/LTX-2' if self.config.video_provider == 'local_cinematic' else 'https://runwayml.com' if self.config.video_provider == 'runway' else 'https://aistudio.google.com/docs/omni',
-                'caption_timing': 'estimated phrase timing; manually verify speech alignment', 'captions': timing})
+                'caption_timing':speech_report['method'] if speech_report else 'estimated phrase timing; manually verify speech alignment', 'speech_quality':speech_report, 'captions': timing})
             rendered.append(output)
             if cache:
                 shutil.copyfile(output,cache.with_suffix('.mp4'))
@@ -227,7 +243,7 @@ class CloudVideoRenderer:
         manifest = {'status': 'rendered', 'review_status': 'draft', 'title': production.content_plan.title,
                     'scenes': scenes, 'technical_quality': quality, 'factual_status': production.factual_status,
                     'warnings': ['Character/voice continuity and factual accuracy require human review.',
-                                 'Caption timings are estimated, not forced-aligned to speech.'],
+                                 ('Speech recognition/alignment is an automated aid; inspect captions and speech.' if self.config.captions in {'asr','aligned'} else 'Caption timings are estimated, not forced-aligned to speech.')],
                     'output': str(final)}
         (output_dir / 'manifest.json').write_text(json.dumps(manifest, indent=2), encoding='utf-8')
         return final, quality

@@ -1,5 +1,31 @@
 # AI Content Agent
 
+## Production completion update — 2026-11-05
+
+**Production tools** now adds isolated Piper neural narration, ASR word captions,
+short-form forced transcript alignment and speech-error reports, licensed Pexels
+acquisition with attribution/cache/rights confirmation, reviewed claim/source
+research dossiers, script-quality metrics, stronger standalone SDXL illustrations,
+and versioned legacy asset/narration regeneration. Derivative videos enter the
+existing manual Review queue; original files/approval states are preserved.
+
+Optional durable generation dispatch, worker heartbeat/readiness, redacted JSON
+logs and validated systemd user-service templates are included. Existing defaults,
+local/cloud pipelines and separate manual publishing remain compatible. No services
+were automatically activated and no paid call or upload was used for validation.
+
+Verification: **621 Python tests passed** in the full run (one previously verified
+long synthetic stress case excluded); the latest **15 production-tool tests passed**
+separately after final refinements. Counts overlap. Real CPU Piper/Whisper alignment,
+a detached worker job and a 1024² DGX SDXL still passed. All **66 frontend tests passed**, and the production build succeeded. No paid call, live upload or new video-model stress run.
+
+Start with the [production-tools setup and release runbook](docs/production-tools.md).
+Piper/Whisper and the pinned SDXL checkpoint are installed in isolated data paths on
+the development DGX. Set your own `PEXELS_API_KEY` for live stock access. Account,
+ComfyUI-export, training-dataset and subjective long-neural-quality checks remain
+explicit operator/research inputs; see the runbook's release boundaries.
+
+
 **A local-first, agent-based pipeline for generating short videos and long-form dramas, with manual review and publishing.**
 
 AI Content Agent develops original screenplays from trends, topics or supplied scripts, generates illustrated scenes or moving footage, and assembles MP4 videos with narration and captions for **manual review and manual publishing**. The project runs on NVIDIA DGX Spark and combines Python 3.12, LangGraph, FastAPI, SQLite, local FFmpeg, React and Streamlit.
@@ -61,7 +87,7 @@ Existing scheduler requests still use `CONTENT_API_KEY`. Manual API review now r
 
 YouTube resumable uploads continue through acknowledged chunks, but failed chunk requests are not automatically retried, including HTTP 5xx responses. The existing reservation remains for reconciliation; a new upload attempt requires human intervention.
 
-> **Verification boundary:** Days 1–7 and subsequent provider/dashboard/cinematic extensions are implemented. Real local video generation and assembly are verified; paid providers and uploads are mocked in automated tests. Facebook token provisioning was verified on 2026-11-03, but permissions remain revocable and a successful live upload is not claimed. Unattended deployment, account-specific cloud quality/billing, licensed stock acquisition and neural local TTS require separate work or manual validation.
+> **Verification boundary:** Days 1–7 and subsequent provider/dashboard/cinematic extensions are implemented. Real local video generation and assembly are verified; paid providers and uploads are mocked in automated tests. Facebook token provisioning was verified on 2026-11-03, but permissions remain revocable and a successful live upload is not claimed. Neural TTS and stock acquisition are integrated; live stock/account access and unattended deployment activation require your configuration and manual validation.
 
 ## Local Video Studio and Claude screenplay planning
 
@@ -107,7 +133,7 @@ A whole-film generation request does not lock identity. The application delibera
 6. **Review individual shots.** Open the reference/frame comparison sheet, watch the full clip and listen to speech, then confirm the actor, outfit and voice. Select regenerated candidates manually. Replacing a conditioning source marks dependent shots stale and blocks final assembly/review until they are regenerated and selected. Work in story order: select the earliest repaired shot before regenerating its dependent continuation. Pause stops future coordinator submissions after current work; it preserves active tasks. Long-film scene caches let unchanged scenes survive reassembly.
 7. **Keep approval and publishing separate.** Every new continuity-mode shot needs its human continuity check before the global quality handoff. Technical motion/audio checks do not approve acting, speech or identity. The existing review queue still requires manual approval, and publication remains a separate manual action.
 
-**Voices:** Native LTX audio can change voice identity or spoken words. **Fixed character voices** uses the existing eSpeak baseline with one selected voice per actor; it replaces generated speech, sounds synthetic and does not promise lip sync. Local narrator remains another option. Neural character voices, audio-conditioned generation, ASR/forced alignment and automatic identity embeddings are future work, not claims of this release.
+**Voices:** Native LTX audio can change voice identity or spoken words. **Fixed character voices** uses the existing eSpeak baseline with one selected voice per actor; it replaces generated speech, sounds synthetic and does not promise lip sync. Local narrator remains another option. Optional Piper narrator/per-character profiles and ASR/short-form forced alignment are now available through Production tools. Audio-conditioned video/lip sync and automatic identity embeddings remain research/owner-input work.
 
 **Optional trained adapters:** No LoRA is trained or downloaded automatically. Only register an adapter that you own/have permission to use and have already tested with the pinned LTX-2.5 distilled checkpoint:
 
@@ -145,7 +171,7 @@ This section describes the Google production path. React and Streamlit **Create 
 | Final assembly | Local FFmpeg on DGX Spark: trim, normalize, captions, audio, MP4 validation |
 | Local fallback | Existing Ollama, text/diffusion scenes, local narration and renderer; select it explicitly |
 
-Google productions are **30–60 seconds**, up to **12 shots**, with individual initial shots of **3–10 seconds**, at **24 fps** and **9:16 or 16:9**. Native generation is 720p; selecting 1080p upscales locally. Long drama is implemented for Runway and Local cinematic, not Google. News remains an **unverified draft** with AI illustrative scenes; there is no automated fact checker or licensed stock-footage integration. Local illustrated previews preserve their legacy behavior.
+Google productions are **30–60 seconds**, up to **12 shots**, with individual initial shots of **3–10 seconds**, at **24 fps** and **9:16 or 16:9**. Native generation is 720p; selecting 1080p upscales locally. Long drama is implemented for Runway and Local cinematic, not Google. News remains an **unverified draft** with AI illustrative scenes; research dossiers and licensed Pexels acquisition are available in Production tools; factual accuracy still needs human source review. Local illustrated previews preserve their legacy behavior.
 
 ### Start a cloud production
 
@@ -197,7 +223,7 @@ Provider failures now retain recognized Google `errors[]` codes with safe guidan
 
 Every raw selected clip must decode, match planned duration, contain measurable motion and include audio when requested. Missing/invalid assets block review. FFmpeg normalizes geometry/frame rate, handles explicit trim windows, adds model audio or local narration, renders readable captions, normalizes loudness and validates the complete H.264/AAC MP4. Captions use **estimated phrase timing**, not speech recognition/forced alignment; human synchronization checks remain mandatory. Technical motion checks do not establish acting quality, correct speech, factual accuracy or identity continuity.
 
-Neural local TTS, word-aligned captions/ASR, automated semantic continuity checks, a durable distributed task queue, verified news research, licensed stock acquisition and arbitrary uploaded-video editing remain future work. Runway long-plan limits extend through 20 minutes; local limits extend through 30 minutes. Full neural film verification currently reaches 3 minutes; the new 30-minute assembly test uses synthetic media, so longer neural productions still need measured hardware and continuity validation. Existing illustrated image/TTS models are preserved.
+Production tools now provides neural local TTS, ASR/short forced alignment, source-linked human research review and licensed stock acquisition. Durable single-host dispatch preserves SQLite. Automated semantic continuity, multi-host distribution and neural A2V/lip-sync remain separate research/architecture work; arbitrary video-to-video editing remains model-dependent. Runway long-plan limits extend through 20 minutes; local limits extend through 30 minutes. Full neural film verification currently reaches 3 minutes; the new 30-minute assembly test uses synthetic media, so longer neural productions still need measured hardware and continuity validation. Existing illustrated image/TTS models are preserved.
 
 ### API additions
 
@@ -666,13 +692,13 @@ The table records the original Days1–7 foundation and its current status. Late
 
 ## Known issues and planned improvements
 
-1. **Visual quality:** LTX/Wan/hybrid moving footage is verified locally; illustrated previews remain available. Text-only identity drift and native text artifacts were observed. Scene frames/reference animation help, but acting, hands, clothing/background continuity and voice still need review. Licensed stock acquisition remains unimplemented.
-2. **Narration:** Native LTX/hybrid and supported cloud audio are available; Wan-only animation is silent and can use the local narrator. `espeak-ng` remains baseline TTS. Neural local TTS, ASR/verbatim-speech checks and forced word alignment remain future work.
+1. **Visual quality:** LTX/Wan/hybrid moving footage is verified locally; illustrated previews remain available. Text-only identity drift and native text artifacts were observed. Scene frames/reference animation help, but acting, hands, clothing/background continuity and voice still need review. Licensed Pexels acquisition and a separate SDXL image option are available in Production tools; live stock access needs your key.
+2. **Narration:** Native LTX/hybrid and supported cloud audio are available; Wan-only animation is silent and can use the local narrator. `espeak-ng` remains baseline TTS. Optional neural TTS, ASR/WER checks and short forced alignment are available; see Production tools.
 3. **Editing:** FFmpeg trims/normalization/captions/loudness, versioned regeneration, Gemini edit/extension and Runway visual edits/final-frame continuation are implemented. Local cinematic models expose regeneration, not native edit/extension endpoints.
 4. **Content research:** Improve factual grounding, originality, scene relevance, and topic selection. Review source licenses before reuse.
-5. **Review workflow:** Script revisions, shot candidates, manual replacement/reassembly and quality handoff are implemented. Dedicated regeneration of legacy illustrated assets or local narration is separate future work. Approval/publishing remain manual.
+5. **Review workflow:** Script revisions, shot candidates, manual replacement/reassembly and quality handoff are implemented. Production tools now adds dedicated per-scene illustrated-asset/local-narration regeneration as a separate immutable review version. Approval/publishing remain manual.
 6. **Facebook permissions:** Provisioning/inspection and human-authorized retry exist. Tokens remain revocable; expiry metadata is a dated observation, not a promise of permanent access. Verify current Page permissions before live publishing/analytics.
-7. **Scheduler/recovery:** API dispatch and active-job/submission guards are implemented. An unattended timer-driven run, service supervision and durable distributed coordination are not established by these tests. Never automatically retry uncertain publishing or paid generation.
+7. **Scheduler/recovery:** API dispatch and active-job/submission guards are implemented. Validated systemd supervision and optional durable single-host dispatch are provided; enabling unattended services and testing the actual timer remain operator steps. Multi-host coordination is outside this single-DGX architecture. Never automatically retry uncertain publishing or paid generation.
 8. **DGX performance:** The128GB pool is shared. Isolated dependencies, compiled Wan attention, hot-model residency, memory guards and deadlines are required; larger native resolutions are not verified. The3-minute LTX validation took about57minutes of summed neural time; Wan/hybrid can take about15–18minutes for5seconds.
 
 ## Security and content policy
@@ -864,7 +890,7 @@ Source videos below3MB use bounded data URIs. Larger normalized clips (up to100M
 5. Inspect shots (both dashboards offer a scene filter for large projects), then the assembled MP4. FFmpeg normalizes each selected candidate, adds local/model narration and estimated phrase captions, concatenates the complete timeline, normalizes loudness and validates decoding/audio/duration/dimensions/FPS/motion. Long tasks use longer processing leases and media-validation deadlines; source/final hashes are checked without loading the complete MP4 into memory. Streamlit final-video preview is bounded at1GB; individual clip previews/downloads retain100MBbounds.
 6. After human continuity/caption/rights inspection, send to manual review. Approval does not publish. **Long drama publishing is supported on YouTube**, with the existing private default and explicit upload confirmation. This Facebook Reels integration remains limited to short videos; long uploads are rejected before reservation or transfer.
 
-`LongContentPlan` preserves the legacy `ContentPlan`30–60second/12scene contract. Existing tables, IDs, job/review routes and local generation remain intact. Long settings/plans and per-candidate source/model/generation-duration snapshots use the existing JSON storage. No SQLite schema migration is necessary for this extension. The pipeline still uses in-process workers; a process crash requires safe status refresh/manual reconciliation rather than a durable queue or repeated billable POST.
+`LongContentPlan` preserves the legacy `ContentPlan`30–60second/12scene contract. Existing tables, IDs, job/review routes and local generation remain intact. Long settings/plans and per-candidate source/model/generation-duration snapshots use the existing JSON storage. No SQLite schema migration is necessary for this extension. Default dispatch remains compatible with in-process workers; optional durable single-host SQLite dispatch and supervised workers are now provided. A crash during an external request still requires manual reconciliation, never a repeated billable POST.
 
 Contracts verified against the [Runway API specification](https://docs.dev.runwayml.com/openapi.json), [input requirements](https://docs.dev.runwayml.com/assets/inputs/), [pricing](https://docs.dev.runwayml.com/guides/pricing/), and [OpenAI model limits](https://developers.openai.com/api/docs/models/gpt-6.1-sol) on2026-11-03. Tests mock paid model requests and uploads. Real synthetic-media checks render/decode a two-minute fifteen-scene drama, preserve source audio during a visual edit, and join a parent plus generated-tail fixture into a longer candidate. Twenty-minute plan bounds are validated; live model quality, seamless continuity, account limits and invoice charges remain checks performed through manually authorized dashboard requests.
 

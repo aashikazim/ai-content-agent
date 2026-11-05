@@ -103,7 +103,7 @@ describe('Create video settings', () => {
     expect(screen.getByText(/Text cards are explicit baseline output/)).toBeInTheDocument();
     expect(screen.queryByLabelText(/api key/i)).not.toBeInTheDocument();
     expect(posts()).toHaveLength(0);
-    expect(request.mock.calls.map(([path]) => path)).toEqual(['/generation/catalog', '/generation/configurations']);
+    await waitFor(()=>expect(request.mock.calls.map(([path]) => path)).toEqual(['/generation/catalog', '/generation/configurations', '/tools/speech-profiles', '/tools/research-dossiers']));
   });
 
   it('keeps script and video selection independent without a provider fallback', async () => {

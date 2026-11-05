@@ -1,0 +1,16 @@
+[Unit]
+Description=AI Content Agent optional generation scheduler
+After=ai-content-agent-api.service
+
+[Service]
+Type=simple
+WorkingDirectory=@ROOT@
+ExecStart=@ROOT@/.venv/bin/python scheduler.py
+Restart=on-failure
+RestartSec=10
+UMask=0077
+Environment=LOG_FORMAT_JSON=true
+NoNewPrivileges=true
+
+[Install]
+WantedBy=default.target

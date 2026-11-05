@@ -3,6 +3,8 @@ from dotenv import load_dotenv
 from pathlib import Path
 
 load_dotenv()
+from app.services.structured_logging import configure as configure_logs
+configure_logs()
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
@@ -12,6 +14,7 @@ from app.api.routes import router
 from app.api.admin_routes import router as admin_router
 from app.api.cloud_routes import router as cloud_router
 from app.api.clip_studio_routes import router as clip_studio_router
+from app.api.tools_routes import router as tools_router
 
 app = FastAPI(
     title="AI Content Agent API",
@@ -62,6 +65,7 @@ app.include_router(router)
 app.include_router(admin_router)
 app.include_router(cloud_router)
 app.include_router(clip_studio_router)
+app.include_router(tools_router)
 
 # The web UI shares the API's origin; cookies also authenticate video requests.
 # Building the UI does not require Node.js on the production server afterwards.

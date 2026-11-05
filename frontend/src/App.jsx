@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import GenerationForm from './GenerationForm.jsx';
 import LocalVideoStudio from './LocalVideoStudio.jsx';
 import ClipStudio from './ClipStudio.jsx';
+import ProductionTools from './ProductionTools.jsx';
 const API = '/api/v1';
 const ACTIVE = new Set(['queued', 'discovering', 'planning', 'rendering', 'processing']);
 const labels = {
@@ -27,6 +28,7 @@ const labels = {
   pending: 'Reserved'
 };
 const titles = {
+  tools: ['Finish with confidence.', 'Narration, speech checks, licensed sources and production readiness.'],
   overview: ['Your creative command center.', 'A clear view of what’s creating, what’s ready, and what comes next.'],
   create: ['Your next video starts here.', 'A format, a story, and the right models. Make every choice intentional.'],
   local: ['Bring your story to life.', 'Plan a screenplay, direct your cast, and create moving video on your DGX Spark.'],
@@ -124,7 +126,7 @@ function Notice({
 export default function App() {
   const [session, setSession] = useState(null);
   const [bootError, setBootError] = useState('');
-  const [page, setPage] = useState(() => window.location.hash.startsWith('#clip-studio') ? 'clips' : 'overview');
+  const [page, setPage] = useState(() => window.location.hash.startsWith('#clip-studio') ? 'clips' : window.location.hash==='#production-tools' ? 'tools' : 'overview');
   const [data, setData] = useState(null);
   const [loadError, setLoadError] = useState('');
   const [refreshing, setRefreshing] = useState(false);
@@ -215,7 +217,8 @@ export default function App() {
   }, [toast]);
   function navigate(next, jobId = null) {
     if (next === 'clips') window.history.replaceState(null, '', '#clip-studio');
-    else if (window.location.hash.startsWith('#clip-studio')) window.history.replaceState(null, '', window.location.pathname + window.location.search);
+    else if (next === 'tools') window.history.replaceState(null, '', '#production-tools');
+    else if (window.location.hash.startsWith('#clip-studio') || window.location.hash==='#production-tools') window.history.replaceState(null, '', window.location.pathname + window.location.search);
     setPage(next);
     setSelected(jobId);
     setMobileNav(false);
@@ -245,17 +248,17 @@ export default function App() {
       <Brand light />
       <div className="workspace-label"><span className="workspace-dot" /> YOUR WORKSPACE <span className="local-tag">LOCAL</span></div>
       <nav aria-label="Main navigation">
-        {[['overview', 'grid', 'Overview'], ['create', 'plus', 'Create video'], ['local', 'spark', 'Local Video Studio'], ['clips', 'film', 'Clip Studio'], ['review', 'film', 'Review queue'], ['publish', 'upload', 'Publishing']].map(([id, icon, label]) => <button key={id} className={`nav-item ${page === id ? 'active' : ''}`} onClick={() => navigate(id)} aria-current={page === id ? 'page' : undefined}><Icon name={icon} /><span>{label}</span>{id === 'review' && summary.pending_review > 0 && <span className="nav-count">{summary.pending_review}</span>}{page === id && id !== 'review' && <span className="nav-active-dot" />}</button>)}
+        {[['overview', 'grid', 'Overview'], ['create', 'plus', 'Create video'], ['local', 'spark', 'Local Video Studio'], ['clips', 'film', 'Clip Studio'], ['tools', 'spark', 'Production tools'], ['review', 'film', 'Review queue'], ['publish', 'upload', 'Publishing']].map(([id, icon, label]) => <button key={id} className={`nav-item ${page === id ? 'active' : ''}`} onClick={() => navigate(id)} aria-current={page === id ? 'page' : undefined}><Icon name={icon} /><span>{label}</span>{id === 'review' && summary.pending_review > 0 && <span className="nav-count">{summary.pending_review}</span>}{page === id && id !== 'review' && <span className="nav-active-dot" />}</button>)}
       </nav>
       <div className="sidebar-note"><div className="sidebar-note-icon"><Icon name="shield" size={23} /><span className="little-star">✳</span></div><h3>Created by AI.<br />Directed by you.</h3><p>You have the final say.<br />Nothing publishes on its own.</p><span className="sidebar-note-rule" /></div>
       <div className="sidebar-bottom"><div className="connection"><span />Local studio <small>DGX SPARK</small></div><div className="profile"><span className="avatar">{session.username?.slice(0, 1).toUpperCase() || 'A'}</span><div><strong>{session.username}</strong><small>Studio administrator</small></div><button onClick={logout} className="icon-button" title="Sign out" aria-label="Sign out"><Icon name="logout" size={19} /></button></div></div>
     </aside>
     <main className="main-content">
-      <header className="topbar"><div className="breadcrumb"><button className="icon-button mobile-menu" aria-label="Open navigation" onClick={() => setMobileNav(true)}><Icon name="menu" /></button><span>Workspace</span><Icon name="chevron" size={13} /><strong>{{ overview: 'Overview', create: 'Create video', local: 'Local Video Studio', clips: 'Clip Studio', review: 'Review queue', publish: 'Publishing' }[page]}</strong></div><div className="topbar-right"><span className="private-label"><Icon name="lock" size={13} />Private workspace</span><button className={`icon-button ${refreshing ? 'rotating' : ''}`} aria-label="Refresh workspace" disabled={refreshing} onClick={() => refresh().catch(() => {})}><Icon name="refresh" size={17} /></button><span className="top-avatar">{session.username?.slice(0, 1).toUpperCase() || 'A'}</span></div></header>
+      <header className="topbar"><div className="breadcrumb"><button className="icon-button mobile-menu" aria-label="Open navigation" onClick={() => setMobileNav(true)}><Icon name="menu" /></button><span>Workspace</span><Icon name="chevron" size={13} /><strong>{{ overview: 'Overview', create: 'Create video', local: 'Local Video Studio', clips: 'Clip Studio', tools: 'Production tools', review: 'Review queue', publish: 'Publishing' }[page]}</strong></div><div className="topbar-right"><span className="private-label"><Icon name="lock" size={13} />Private workspace</span><button className={`icon-button ${refreshing ? 'rotating' : ''}`} aria-label="Refresh workspace" disabled={refreshing} onClick={() => refresh().catch(() => {})}><Icon name="refresh" size={17} /></button><span className="top-avatar">{session.username?.slice(0, 1).toUpperCase() || 'A'}</span></div></header>
       <div className="page-content">
-        <div className="page-heading"><div><div className="eyebrow">{{ overview: 'MAKE SOMETHING WORTH WATCHING', create: 'FROM IDEA TO FIRST FRAME', local: 'LOCAL MODELS · YOUR DIRECTION', clips: 'CLIP STUDIO · YOUR SOURCE, NEW DIRECTIONS', review: 'THE HUMAN TOUCH', publish: 'THE FINAL STEP' }[page]}</div><h1>{titles[page][0]}</h1><p>{titles[page][1]}</p></div>{page === 'overview' && <button className="button primary" onClick={() => navigate('create')}><Icon name="plus" size={17} />Create video</button>}</div>
+        <div className="page-heading"><div><div className="eyebrow">{{ overview: 'MAKE SOMETHING WORTH WATCHING', create: 'FROM IDEA TO FIRST FRAME', local: 'LOCAL MODELS · YOUR DIRECTION', clips: 'CLIP STUDIO · YOUR SOURCE, NEW DIRECTIONS', tools: 'POLISH · RESEARCH · VERIFY', review: 'THE HUMAN TOUCH', publish: 'THE FINAL STEP' }[page]}</div><h1>{titles[page][0]}</h1><p>{titles[page][1]}</p></div>{page === 'overview' && <button className="button primary" onClick={() => navigate('create')}><Icon name="plus" size={17} />Create video</button>}</div>
         {loadError && <div className="load-error"><Notice type="error">{loadError} {data && 'Showing the last loaded data.'}</Notice><button className="button subtle" onClick={() => refresh().catch(() => {})}>Refresh</button></div>}
-        {page === 'clips' ? <ClipStudio request={request} onNavigate={navigate} /> : page === 'local' ? <LocalVideoStudio request={request} /> : page === 'create' ? <GenerationForm onLocalStudio={() => navigate('local')} request={request} onCreated={async () => {
+        {page === 'tools' ? <ProductionTools request={request} onNavigate={navigate} /> : page === 'clips' ? <ClipStudio request={request} onNavigate={navigate} /> : page === 'local' ? <LocalVideoStudio request={request} /> : page === 'create' ? <GenerationForm onLocalStudio={() => navigate('local')} request={request} onCreated={async () => {
           setToast('Generation requested. Follow progress in the overview, then review your video.');
           await refresh().catch(() => {});
         }} /> : !data ? <div className="loading-panel"><div className="spinner" /><p>Loading your workspace…</p></div> : page === 'overview' ? <Overview data={data} navigate={navigate} /> : page === 'review' ? <Review data={data} selected={selected} setSelected={setSelected} request={request} refresh={refresh} notify={setToast} /> : <Publishing data={data} selected={selected} setSelected={setSelected} request={request} refresh={refresh} notify={setToast} liveAttempts={liveAttempts.current} />}

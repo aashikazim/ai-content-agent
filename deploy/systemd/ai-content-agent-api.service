@@ -1,0 +1,20 @@
+[Unit]
+Description=AI Content Agent API and React dashboard
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=@ROOT@
+ExecStart=@ROOT@/.venv/bin/python -m uvicorn server:app --host 127.0.0.1 --port 8000
+Restart=on-failure
+RestartSec=5
+UMask=0077
+Environment=LOG_FORMAT_JSON=true
+Environment=DURABLE_WORKERS=true
+NoNewPrivileges=true
+PrivateTmp=false
+TimeoutStopSec=45
+
+[Install]
+WantedBy=default.target

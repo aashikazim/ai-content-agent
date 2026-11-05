@@ -88,8 +88,25 @@ def script_request(body):
     )
 
 
-def execute_script(attempt_id):
+def _execute_script_inline(attempt_id):
     ScriptGenerationService(DB_PATH).run(attempt_id)
+
+
+def execute_script(attempt_id):
+    if os.getenv('DURABLE_WORKERS','false').lower()=='true':
+        from app.services.work_queue import WorkQueue
+        queue=WorkQueue(DB_PATH)
+        # Chapter continuation is a new explicit dispatch of the same draft ID.
+        # Preserve the prior queue attempt; only the script service's queued state
+        # (set by its separately authorized resume/revision) can rearm dispatch.
+        with queue.connect() as conn:
+            prior=conn.execute("SELECT status FROM app_work_queue WHERE kind='script' AND target_id=?",(str(attempt_id),)).fetchone()
+            state=conn.execute('SELECT status FROM script_generation_attempts WHERE attempt_id=?',(str(attempt_id),)).fetchone()
+        from uuid import uuid4
+        dispatch=str(uuid4()) if prior and prior['status'] in ('finished','interrupted') and state and state['status']=='queued' else None
+        queue.enqueue('script',attempt_id,dispatch_key=dispatch)
+    else:
+        _execute_script_inline(attempt_id)
 
 
 class ReviewRequest(BaseModel):
@@ -167,7 +184,7 @@ def get_storage():
     )
 
 
-def execute_job(job_id):
+def _execute_job_inline(job_id):
     try:
         workflow = ContentWorkflow()
         workflow.run(job_id)
@@ -184,6 +201,14 @@ def execute_job(job_id):
             get_jobs().update_job(
                 job_id, "failed", error="Generation could not start. Check server logs."
             )
+
+
+def execute_job(job_id):
+    if os.getenv('DURABLE_WORKERS','false').lower()=='true':
+        from app.services.work_queue import WorkQueue
+        WorkQueue(DB_PATH).enqueue('job',job_id)
+    else:
+        _execute_job_inline(job_id)
 
 
 @router.get("/generation/catalog", dependencies=[Depends(require_api_key)])

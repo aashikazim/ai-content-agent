@@ -1,3 +1,4 @@
+import SpeechOptions from './SpeechOptions.jsx';
 import React, {useEffect, useRef, useState} from 'react';
 import './ClipStudio.css';
 
@@ -45,8 +46,15 @@ export default function ClipStudio({request,onNavigate}) {
     return()=>{live=false;clearInterval(timer);};
   },[current?.project_id,active,request]);
   function change(values) {setSettings(previous=>({...previous,...values}));}
+  const configurationIssue = catalog && !catalog.mock ? (
+    settings.continuity==='connected' && !settings.cast_package_id ? 'Connected action requires an approved cast package. Select one, or choose anchored continuity with LTX.' :
+    ['wan','hybrid'].includes(settings.video_model) && !settings.cast_package_id ? 'Wan and hybrid require an approved cast package. Select one, or choose LTX with source references.' :
+    settings.narration==='character_tts' && !settings.cast_package_id ? 'Fixed character voices require an approved cast package. Choose a local narrator for narration without a cast.' :
+    settings.video_model==='wan' && (sourceKind==='images' || settings.continuity==='connected' || settings.narration==='model') ? 'Wan-only needs a driving video, anchored continuity and source or local speech. Use hybrid for connected action.' :
+    settings.narration==='source' && sourceKind==='images' ? 'Images have no source audio. Choose model audio or a local narrator.' : ''
+  ) : '';
   async function generate(event) {
-    event.preventDefault();if(busy || !rights || (!catalog?.mock && !settings.paid_planning_confirmed))return;
+    event.preventDefault();if(busy || !rights || configurationIssue || (!catalog?.mock && !settings.paid_planning_confirmed))return;
     setBusy(true);setError('');
     projectRequest.current ||= identifier();
     const form=new FormData();
@@ -57,7 +65,7 @@ export default function ClipStudio({request,onNavigate}) {
       if(!mounted.current)return;
       selected.current=project.project_id;setCurrent(project);window.history.replaceState(null,'',`#clip-studio/${project.project_id}`);
       await history();
-    } catch(err) {setError(`${err.message} Refresh project history before another request. Repeating this form uses the same request ID.`);}
+    } catch(err) {setError(err.status>=400 && err.status<500 && ![408,409].includes(err.status) ? err.message : `${err.message} Refresh project history before another request. Repeating this form uses the same request ID.`);}
     finally {setBusy(false);}
   }
   async function mutate(path, key, extra={}) {
@@ -87,13 +95,15 @@ export default function ClipStudio({request,onNavigate}) {
           <label>Generation backend<select value={settings.backend} onChange={e=>change({backend:e.target.value})}><option value="native">Existing native LTX / Wan runtime</option><option value="comfyui">ComfyUI · exported workflows required</option></select></label>
           <label>Approved cast package<select value={settings.cast_package_id || ''} onChange={e=>change({cast_package_id:e.target.value || null})}><option value="">Source references only (LTX)</option>{castPackages.map(p=><option key={p.package_id} value={p.package_id} disabled={p.unavailable}>{p.name}</option>)}</select></label>
           <label>Continuity<select value={settings.continuity} onChange={e=>change({continuity:e.target.value})}><option value="anchored">Anchor each cut to approved references</option><option value="connected">Connected action · carry prior frames</option></select></label>
-          <label>Audio<select value={settings.narration} onChange={e=>change({narration:e.target.value})}><option value="model">Model audio (LTX / hybrid)</option><option value="source">Reattach original source audio</option><option value="character_tts">Fixed cast voices (eSpeak)</option></select></label>
+          <label>Audio<select value={settings.narration} onChange={e=>change({narration:e.target.value})}><option value="model">Model audio (LTX / hybrid)</option><option value="source">Reattach original source audio</option><option value="local_tts">Local narrator · optional neural voice</option><option value="character_tts">Fixed cast voices (eSpeak)</option></select></label>
+          <SpeechOptions request={request} value={settings.speech_profile_id} onChange={value=>change({speech_profile_id:value})}/>
           <label>Whisper analysis model<select value={settings.whisper_model} onChange={e=>change({whisper_model:e.target.value})}>{['tiny','base','small','medium'].map(m=><option key={m}>{m}</option>)}</select></label>
         </div>
         <details><summary>Character and continuity guide</summary><p>Create an approved cast package in Local Video Studio first, then select it here. The same canonical face, clothing and voice are reused. LTX can use source frames without a cast, but recurring actors work best with approved images. Wan requires one actor, a source video for driving motion, anchored continuity, and source or fixed-character audio. Hybrid uses Wan on cuts and LTX on continuous action. Multi-actor identity and lip sync still need human review.</p><p>Example: upload a cafe scene, choose your approved actor package, native hybrid, connected continuity, three 10-second clips and fixed cast voices. Instruction: “Keep Maya’s face and blue jacket throughout. Maya enters the cafe, continues walking to the counter, then orders tea. Use the same calm voice; include short dialogue.” The planner marks true continuations and cuts. Longer clips are split into connected shots and assembled locally.</p><p>ComfyUI needs your tested API workflow exports and conditioning bindings. Native rendering reuses the installed models. Source clips supply scene frames; native LTX performs image-to-video, while Wan transfers source driving motion. Model audio is not guaranteed dialogue or a consistent voice; fixed eSpeak voices prioritize consistency and do not provide lip sync.</p></details>
         {!catalog?.mock && <label className="checkbox-label"><input type="checkbox" checked={settings.paid_planning_confirmed} onChange={e=>change({paid_planning_confirmed:e.target.checked})}/><span>I authorize the selected planning provider: estimated up to ${Number(catalog?.planning_estimate_usd || .4).toFixed(2)}, including at most one invalid-JSON repair (two paid calls total). This is an estimate, not an account billing cap. I also authorize local rendering.</span></label>}
         <label className="checkbox-label"><input type="checkbox" checked={rights} onChange={e=>setRights(e.target.checked)}/><span>I have the rights to use this source.</span></label>
-        <div className="generation-actions"><button className="button primary" disabled={busy || !rights || !instruction.trim() || (!catalog?.mock && !settings.paid_planning_confirmed) || active}>{catalog?.mock?'Generate mock clips':'Generate clips'}</button><button type="button" className="button subtle" disabled={busy} onClick={()=>{projectRequest.current=null;selected.current=null;setCurrent(null);setError('');window.history.replaceState(null,'','#clip-studio');}}>New project</button></div>
+        {configurationIssue && <div className="notice notice-warning" role="status"><p>{configurationIssue}</p></div>}
+        <div className="generation-actions"><button className="button primary" disabled={busy || Boolean(configurationIssue) || !rights || !instruction.trim() || (!catalog?.mock && !settings.paid_planning_confirmed) || active}>{catalog?.mock?'Generate mock clips':'Generate clips'}</button><button type="button" className="button subtle" disabled={busy} onClick={()=>{projectRequest.current=null;selected.current=null;setCurrent(null);setError('');window.history.replaceState(null,'','#clip-studio');}}>New project</button></div>
       </form>
     </section>
     <aside className="generation-section"><h2>Saved projects</h2><p>Projects and clip versions remain available after refreshing. Use New project to start another request; regenerating keeps the saved project settings.</p><label>Reopen project<select value={current?.project_id || ''} onChange={e=>e.target.value && open(e.target.value).catch(err=>setError(err.message))}><option value="">Choose a project</option>{projects.map(p=><option key={p.project_id} value={p.project_id}>{p.instruction.slice(0,70)} · {p.status}</option>)}</select></label><button type="button" className="button subtle" onClick={()=>history().catch(err=>setError(err.message))}>Refresh project history</button></aside></div>

@@ -20,7 +20,8 @@ class Settings(BaseModel):
     continuity: Literal['anchored', 'connected'] = 'anchored'
     cast_package_id: UUID | None = None
     paid_planning_confirmed: bool = Field(default=False, strict=True)
-    narration: Literal['model', 'source', 'character_tts'] = 'model'
+    narration: Literal['model', 'source', 'local_tts', 'character_tts'] = 'model'
+    speech_profile_id: str | None = Field(default=None, pattern=r'^[A-Za-z0-9_-]{1,80}$')
     whisper_model: Literal['tiny', 'base', 'small', 'medium'] = 'base'
     reattach_audio: bool = Field(default=False, strict=True)
 
@@ -83,6 +84,7 @@ class PlannedClip(BaseModel):
     source_end: float | None = Field(..., strict=True, ge=0, allow_inf_nan=False)
     title: str = Field(min_length=1, max_length=150)
     generation_prompt: str = Field(min_length=1, max_length=6000)
+    narration_text: str = Field(default='', max_length=2000)
     negative_prompt: str = Field(max_length=2000)
     style_notes: str = Field(max_length=2000)
     recommended_model: Literal['ltx', 'wan', 'hybrid']

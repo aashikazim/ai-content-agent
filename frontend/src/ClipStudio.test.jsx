@@ -150,3 +150,20 @@ it('shows a prominent saved analysis error without automatically retrying',async
   expect(screen.getByRole('alert')).toHaveTextContent('Clip workflow failed');
   expect(request.mock.calls.filter(([,o])=>o?.method==='POST')).toHaveLength(0);
 });
+
+it('explains invalid connected-action settings before any paid submission',async()=>{
+ const base=api(),user=userEvent.setup();
+ const request=vi.fn(async(path,options)=>path==='/clip-studio/catalog'?{...catalog,mock:false}:base(path,options));
+ render(<ClipStudio request={request}/>);
+ await screen.findByRole('option',{name:'Claude Sonnet 5.5'});
+ await user.type(screen.getByLabelText('Instructions'),'Create connected scenes');
+ await user.type(screen.getByLabelText('YouTube URL'),'https://youtu.be/abcdefghijk');
+ await user.click(screen.getByRole('checkbox',{name:'I have the rights to use this source.'}));
+ await user.click(screen.getByRole('checkbox',{name:/I authorize the selected planning provider/}));
+ await user.selectOptions(screen.getByLabelText('Continuity'),'connected');
+ expect(screen.getByRole('button',{name:'Generate clips'})).toBeDisabled();
+ expect(await screen.findByText(/Connected action requires an approved cast package/)).toBeVisible();
+ expect(request.mock.calls.filter(([,o])=>o?.method==='POST')).toHaveLength(0);
+ await user.selectOptions(screen.getByLabelText('Continuity'),'anchored');
+ expect(screen.getByRole('button',{name:'Generate clips'})).toBeEnabled();
+});

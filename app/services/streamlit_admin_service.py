@@ -194,6 +194,9 @@ class StreamlitAdminClient:
         method = 'GET' if body is None else 'POST'
         return self._request(method, '/generation/' + path, body, uncertain=paid)
 
+    def tools(self,path,body=None):
+        return self._request('GET' if body is None else 'POST','/tools/'+path,body)
+
     def media_bytes(self, path):
         import re
         if not re.fullmatch(r'/(?:generation/references/[a-f0-9-]{36}/image|generation/driving-references/[a-f0-9-]{36}/video|generation/videos/[a-f0-9-]{36}/shots/[a-f0-9-]{36}/video|jobs/[a-f0-9-]{36}/video)', path):

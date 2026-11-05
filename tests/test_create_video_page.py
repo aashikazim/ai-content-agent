@@ -55,6 +55,10 @@ class FakeSession:
         path = urlsplit(url).path.removeprefix("/api/v1")
         body = deepcopy(kwargs.get("json"))
         self.calls.append((method, path, {**kwargs, "json": body}))
+        if method=='GET' and path=='/tools/speech-profiles':
+            return FakeResponse({'profiles':getattr(self,'speech_profiles',[])})
+        if method=='GET' and path=='/tools/research-dossiers':
+            return FakeResponse({'dossiers':getattr(self,'research_dossiers',[])})
         if path == "/auth/session":
             return FakeResponse({
                 "authenticated": self.authenticated,
@@ -469,3 +473,13 @@ def test_streamlit_local_cinematic_choices_preserve_script_independence(api_sess
     button(app,'Save settings').click().run()
     assert api_session.drafts[-1]['config']['video_model']=='wan2.2-animate-2'
     assert not job_calls(api_session)
+
+
+def test_optional_neural_profile_and_research_metadata_never_start_generation(api_session):
+    api_session.speech_profiles=[{'id':'piper-test','label':'Piper test voice'}]
+    api_session.research_dossiers=[{'dossier_id':'2f0d0f97-28dc-40c7-9fb2-c4854e2360dd','topic':'Reviewed cafe sources'}]
+    app=page()
+    app.selectbox(key='cv_speech_profile_id').select('piper-test').run()
+    app.selectbox(key='cv_research_dossier_id').select('2f0d0f97-28dc-40c7-9fb2-c4854e2360dd').run()
+    assert app.selectbox(key='cv_speech_profile_id').value=='piper-test'
+    assert not app.exception and not job_calls(api_session)

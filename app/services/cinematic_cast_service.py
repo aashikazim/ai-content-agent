@@ -18,6 +18,7 @@ class CastMember(CharacterProfile):
     primary_reference_id: UUID
     tts_voice: Literal['en-us', 'en-us+m1', 'en-us+m2', 'en-us+f1', 'en-us+f2'] = 'en-us'
     ltx_adapter_id: UUID | None = None
+    speech_profile_id: str | None = Field(default=None,pattern=r'^[A-Za-z0-9_-]{1,80}$')
 
     @model_validator(mode='after')
     def primary_belongs_to_character(self):
@@ -52,6 +53,9 @@ class CinematicCastService:
         data = value.model_dump(mode='json', exclude={'confirmed'})
         assets = []
         for member in value.characters:
+            if member.speech_profile_id:
+                from app.services.speech_profiles import verified
+                verified(member.speech_profile_id)
             # Each image is verified individually; multiple views belong to one actor.
             for identifier in member.reference_ids:
                 reference = self.references.verified([identifier])[0]
@@ -84,6 +88,9 @@ class CinematicCastService:
         for item in data['assets']:
             if self.references.verified([item['reference_id']])[0]['sha256'] != item['sha256']:
                 raise ValueError('A cast asset changed; create and inspect a new package')
+        from app.services.speech_profiles import verified as verified_voice
+        for member in data['characters']:
+            if member.get('speech_profile_id'):verified_voice(member['speech_profile_id'])
         from app.services.cinematic_adapter_service import CinematicAdapterService
         for item in data.get('adapters',[]):
             adapter=CinematicAdapterService().verified(item['adapter_id'])

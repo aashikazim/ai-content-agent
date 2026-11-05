@@ -232,9 +232,29 @@ narration = sound[0].selectbox(
     format_func=lambda value: {"local_tts": "Local TTS · current baseline", "model_audio": "Selected model audio"}[value],
 )
 captions = sound[1].selectbox(
-    "Captions", ["scene_text", "timed"], key="cv_captions",
-    format_func=lambda value: {"scene_text": "Scene text · current baseline", "timed": "Timed phrases · cloud assembly"}[value],
+    "Captions", ["scene_text", "timed", "asr", "aligned"], key="cv_captions",
+    format_func=lambda value: {"scene_text": "Scene text · current baseline", "timed": "Timed phrases · cloud assembly", "asr":"Recognized speech word timing", "aligned":"Forced transcript alignment · scenes up to30s"}[value],
 )
+with st.expander("Neural narration and reviewed research"):
+    try:
+        speech_profiles=api.tools('speech-profiles').get('profiles',[])
+        research_dossiers=api.tools('research-dossiers').get('dossiers',[])
+    except ContentAPIError:
+        speech_profiles=[];research_dossiers=[]
+    if speech_profiles:
+        voice_labels={p['id']:p['label'] for p in speech_profiles}
+        existing=st.session_state.get('cv_speech_profile_id')
+        options=[None,*voice_labels]
+        if existing and existing not in options:options.append(existing)
+        st.selectbox('Neural narrator profile',options,key='cv_speech_profile_id',format_func=lambda v,mapping=voice_labels:mapping.get(v,'Existing eSpeak narrator' if v is None else 'Unavailable saved profile'))
+    if research_dossiers:
+        research_labels={p['dossier_id']:p['topic'] for p in research_dossiers}
+        existing=st.session_state.get('cv_research_dossier_id')
+        options=[None,*research_labels]
+        if existing and existing not in options:options.append(existing)
+        st.selectbox('Reviewed research dossier',options,key='cv_research_dossier_id',format_func=lambda v,mapping=research_labels:mapping.get(v,'No attached dossier' if v is None else 'Unavailable saved dossier'))
+    st.caption('Prepare voice samples, research dossiers and derivative exports in the React Production tools page. Factual review and publishing remain manual.')
+
 with st.expander("Limits and character references"):
     max_shots = st.number_input("Maximum shots", min_value=1, max_value=240 if content_type == "long_drama" else 12, key="cv_max_shots")
     max_cost = st.number_input("Maximum cost (USD)", min_value=0.0, max_value=1000.0, step=1.0, key="cv_max_cost_usd")
@@ -261,6 +281,8 @@ configuration = {
     "resolution": resolution,
     "fps": fps,
     "narration": narration,
+    "speech_profile_id":st.session_state.get("cv_speech_profile_id"),
+    "research_dossier_id":st.session_state.get("cv_research_dossier_id"),
     "source_mode": source_mode,
     "topic": st.session_state.get("cv_topic", "") if source_mode == "topic" else "",
     "supplied_script": st.session_state.get("cv_supplied_script", "") if source_mode == "script" else "",

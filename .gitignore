@@ -40,3 +40,13 @@ data/clip_studio/
 
 # Isolated CPU source-analysis environment and Whisper checkpoints
 data/clip_studio_runtime/
+
+# Optional neural speech models and generated tool assets
+data/speech_runtime/
+data/production_tools/
+data/service-preview/
+
+data/still_image_runtime/
+
+# Durable consumer lock (the database remains in its existing configured location)
+*.worker.lock

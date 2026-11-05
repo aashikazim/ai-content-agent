@@ -224,6 +224,9 @@ def validate_for_execution(config: GenerationConfig) -> None:
     """Validate a renderable job; paid authorization is also enforced in JobService."""
     config = GenerationConfig.model_validate(config)
     validate_for_script(config)
+    if config.speech_profile_id:
+        from app.services.speech_profiles import verified
+        verified(config.speech_profile_id)
     if config.video_provider in {"google", "runway", "local_cinematic"}:
         validate_for_cloud_video(config)
         return

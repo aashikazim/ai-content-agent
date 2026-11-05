@@ -49,6 +49,9 @@ class ClipStudioService:
         key = 'ANTHROPIC_API_KEY' if settings.planner_provider == 'anthropic' else 'OPENAI_API_KEY'
         if not os.getenv(key):
             raise StudioError('Configure the API key for the selected planning provider')
+        if settings.speech_profile_id:
+            from app.services.speech_profiles import verified
+            verified(settings.speech_profile_id)
         if settings.cast_package_id:
             CinematicCastService(self.storage.db_path).get(settings.cast_package_id)
         if settings.continuity == 'connected' and not settings.cast_package_id:
@@ -247,7 +250,7 @@ class ClipStudioService:
         with self.storage.connect() as conn:
             payload = conn.execute('SELECT request_json FROM clip_studio_jobs WHERE job_id=?', (job_id,)).fetchone()
         if payload and json.loads(payload[0]).get('mode') == 'real':
-            allowed = {'OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'COMFYUI_BASE_URL', 'LOCAL_CINEMATIC_ROOT', 'LOCAL_CINEMATIC_PYTHON', 'CHARACTER_REFERENCES_DIR', 'CUDA_VISIBLE_DEVICES', 'CUDA_HOME', 'LD_LIBRARY_PATH'}
+            allowed = {'OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'COMFYUI_BASE_URL', 'LOCAL_CINEMATIC_ROOT', 'LOCAL_CINEMATIC_PYTHON', 'CHARACTER_REFERENCES_DIR', 'CUDA_VISIBLE_DEVICES', 'CUDA_HOME', 'LD_LIBRARY_PATH', 'SPEECH_RUNTIME_ROOT'}
             environment.update({key:value for key,value in os.environ.items() if key in allowed or key.startswith('CLIP_STUDIO_') or key.startswith('LOCAL_CINEMATIC_')})
         try:
             child = subprocess.Popen([sys.executable, '-m', 'app.workers.clip_studio_worker', self.storage.db_path],

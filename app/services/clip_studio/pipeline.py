@@ -23,13 +23,20 @@ def audio_track(clip, settings, source, cast, directory):
         run(['ffmpeg','-v','error','-nostdin','-y','-ss',str(clip.source_start),'-i',source['path'],
              '-t',str(min(clip.duration_seconds,clip.source_end-clip.source_start)),'-vn','-ar','48000','-ac','2',str(output)])
         return output
+    if settings.narration=='local_tts':
+        if not clip.narration_text.strip():raise StudioError('The local narrator needs narration_text in the plan')
+        output=directory/'narrator.wav'
+        TTSService(profile_id=settings.speech_profile_id).synthesize(clip.narration_text,output)
+        from app.services.cloud_video_renderer import probe
+        if float(probe(output)['format']['duration'])>clip.duration_seconds+.25:raise StudioError('Narration exceeds clip duration; shorten the narration before regeneration')
+        return output
     if settings.narration=='character_tts':
         if not clip.dialogue:raise StudioError('Character narration needs dialogue in the approved plan')
         voices={a['character_id']:a['tts_voice'] for a in (cast or {}).get('characters',[])}
         pieces=[]
         for index,line in enumerate(clip.dialogue):
             if line.character_id not in voices:raise StudioError('Dialogue must use an approved cast voice')
-            path=directory/f'voice-{index}.wav';TTSService(voice=voices[line.character_id]).synthesize(line.text,path);pieces.append(path)
+            path=directory/f'voice-{index}.wav';TTSService(voice=voices[line.character_id],**({'profile_id':next((a.get('speech_profile_id') for a in cast['characters'] if a['character_id']==line.character_id),None) or settings.speech_profile_id} if settings.speech_profile_id or any(a.get('speech_profile_id') for a in cast['characters'] if a['character_id']==line.character_id) else {})).synthesize(line.text,path);pieces.append(path)
         manifest=directory/'voices.txt';manifest.write_text(''.join(f"file '{p.name}'\n" for p in pieces))
         output=directory/'dialogue.wav'
         run(['ffmpeg','-v','error','-nostdin','-y','-f','concat','-safe','1','-i',str(manifest),'-ar','48000','-ac','2',str(output)])

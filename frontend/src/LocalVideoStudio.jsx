@@ -1,3 +1,5 @@
+import ResearchDossierPicker from './ResearchDossierPicker.jsx';
+import SpeechOptions from './SpeechOptions.jsx';
 import React, { useEffect, useState } from 'react';
 import ScriptWorkshop from './ScriptWorkshop.jsx';
 import CloudProduction from './CloudProduction.jsx';
@@ -65,7 +67,10 @@ export default function LocalVideoStudio({ request }) {
         <label>Script provider<select value={configuration.script_provider} onChange={e => { const provider = scriptProviders.find(item => item.id === e.target.value); change({ script_provider: provider.id, script_model: provider.models[0].id }); }}>{scriptProviders.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label>
         <label>Export resolution<select value={configuration.resolution} onChange={e => change({ resolution: e.target.value })}><option value="720p">720p</option><option value="1080p">1080p · locally upscaled</option></select></label>
         {!wan && <label>Starting visuals<select value={configuration.video_input_mode} onChange={e => change({ video_input_mode: e.target.value })}><option value="text">Start from text</option><option value="image">Start from images</option></select></label>}
+        <SpeechOptions request={request} value={configuration.speech_profile_id} onChange={value=>change({speech_profile_id:value})}/>
         <label>Audio<select value={configuration.narration} onChange={e => change({ narration: e.target.value })}>{!wan && <option value="model_audio">Native model audio</option>}<option value="local_tts">Local narrator</option>{configuration.cast_package_id && <option value="character_tts">Fixed character voices · eSpeak baseline</option>}</select></label>
+        <label>Caption timing<select value={configuration.captions} onChange={e=>change({captions:e.target.value})}><option value="timed">Estimated phrases</option><option value="scene_text">Scene text</option><option value="asr">Recognized speech word timing</option><option value="aligned">Forced transcript alignment · scenes up to30s</option></select></label>
+        <ResearchDossierPicker request={request} value={configuration.research_dossier_id} onChange={value=>change({research_dossier_id:value})}/>
         <label>Script budget (USD)<input type="number" min="0" max="1000" step="0.01" value={configuration.max_cost_usd} onChange={e => change({ max_cost_usd: e.target.value })} /></label>
       </div></details>
       <p className="generation-human-note">Script: {scriptProvider?.models[0]?.label || configuration.script_model}. {configuration.script_provider === 'anthropic' ? 'Claude receives your story text for paid screenplay planning. Video generation stays local.' : 'Ollama plans the screenplay locally.'}</p>

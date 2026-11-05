@@ -101,7 +101,8 @@ class ContentWorkflow:
             tts_service=TTSService(
                 voice=os.getenv(
                     "TTS_VOICE", "en-us"
-                )
+                ),
+                **({'profile_id':config.speech_profile_id} if config and config.speech_profile_id else {})
             ),
             renderer=VideoRenderer(
                 width=width,

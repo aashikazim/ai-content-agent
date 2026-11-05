@@ -1,3 +1,5 @@
+import SpeechOptions from './SpeechOptions.jsx';
+import ResearchDossierPicker from './ResearchDossierPicker.jsx';
 import React, { useEffect, useState } from 'react';
 import './GenerationForm.css';
 import ScriptWorkshop, { PaidScriptAuthorization } from './ScriptWorkshop.jsx';
@@ -240,6 +242,7 @@ export default function GenerationForm({ request, onCreated, onLocalStudio }) {
                 <Field name="resolution" label="Resolution"><select id="create-resolution" value={configuration.resolution} onChange={event => change({ resolution: event.target.value })}>{catalog.resolutions.map(item => <option key={item} value={item}>{item}</option>)}</select></Field>
                 <Field name="fps" label="Frame rate"><select id="create-fps" value={configuration.fps} onChange={event => change({ fps: Number(event.target.value) })}>{catalog.fps.map(item => <option key={item} value={item} disabled={videoModel?.fps && !videoModel.fps.includes(item)}>{item} fps</option>)}</select></Field>
                 <Field name="shots" label="Maximum scenes"><input id="create-shots" type="number" min="1" max={configuration.content_type === 'long_drama' ? 240 : 12} value={configuration.max_shots} onChange={event => change({ max_shots: Number(event.target.value) })} required /></Field>
+                <SpeechOptions request={request} value={configuration.speech_profile_id} onChange={value=>change({speech_profile_id:value})}/><ResearchDossierPicker request={request} value={configuration.research_dossier_id} onChange={value=>change({research_dossier_id:value})}/>
                 <Field name="narration" label="Narration"><select id="create-narration" value={configuration.narration} onChange={event => change({ narration: event.target.value })}><option value="local_tts">Local TTS · current baseline</option><option value="model_audio">Selected model audio</option></select></Field>
                 <Field name="captions" label="Captions"><select id="create-captions" value={configuration.captions} onChange={event => change({ captions: event.target.value })}><option value="scene_text">Scene text · current baseline</option><option value="timed">Timed phrases · cloud assembly</option></select></Field>
                 <Field name="budget" label="Maximum budget (USD)" hint="Quotes reserve estimated script and clip costs against this limit. Provider billing remains authoritative."><input id="create-budget" type="number" min="0" max="1000" step="0.01" value={configuration.max_cost_usd} onChange={event => change({ max_cost_usd: event.target.value })} required /></Field>

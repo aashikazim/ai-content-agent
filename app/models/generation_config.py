@@ -50,12 +50,14 @@ class GenerationConfig(BaseModel):
     ] = "cinematic"
     resolution: Literal["720p", "1080p"] = "1080p"
     fps: Literal[24, 30] = 30
+    research_dossier_id: UUID | None = None
+    speech_profile_id: str | None = Field(default=None, pattern=r'^[A-Za-z0-9_-]{1,80}$')
     narration: Literal["local_tts", "model_audio", "character_tts"] = "local_tts"
     source_mode: Literal["trends", "topic", "script"] = "trends"
     topic: str = Field(default="", max_length=1000)
     supplied_script: str = Field(default="", max_length=20000)
     character_reference_ids: list[UUID] = Field(default_factory=list, max_length=3)
-    captions: Literal["scene_text", "timed"] = "scene_text"
+    captions: Literal["scene_text", "timed", "asr", "aligned"] = "scene_text"
     max_shots: int = Field(default=12, ge=1, le=600, strict=True)
     max_cost_usd: Decimal = Field(default=Decimal("10"), ge=0, le=1000)
     require_motion: bool = Field(default=False, strict=True)

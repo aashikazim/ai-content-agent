@@ -42,6 +42,7 @@ def strict_schema(request=None, cast=None):
         properties = clip['properties']
         properties['recommended_model']['enum'] = [settings.video_model]
         properties['duration_seconds']['enum'] = [settings.duration_seconds]
+        if settings.narration!='local_tts':properties['narration_text']['enum']=['']
         for field in ('source_start','source_end'):
             properties[field] = {'type':'null'} if request.source_kind=='images' else {'type':'number','description':'Numeric source seconds inside source_duration; start must be less than end. Never use null or an HH:MM:SS string for a video source.'}
         if settings.continuity != 'connected':
@@ -121,6 +122,8 @@ def planning_prompt(request, analysis, cast=None):
         rules += 'Use only approved character IDs, names, clothing and voices. Every dialogue speaker must be in that clip\'s character_ids. '
     else:
         rules += 'No approved cast package exists. Do not return character_ids or dialogue. Describe any source actors in generation_prompt; do not invent registry IDs or fixed voices. '
+    if request.settings.narration=='local_tts':
+        rules += f'Write narration_text for the local narrator: at most {int(request.settings.duration_seconds*160/60*.9)} words, natural spoken prose; do not invent dialogue actor IDs. '
     if request.settings.narration == 'source':
         rules += 'Original source audio will be reattached; do not write new dialogue. Choose source ranges matching the requested output duration where possible. '
     return json.dumps({'instruction': request.instruction, 'source_kind': request.source_kind,
@@ -164,6 +167,8 @@ def validate_hosted_plan(text, request, analysis, cast=None):
     plan = validate_plan(value, request, analysis.get('duration_seconds'))
     for index, clip in enumerate(plan.clips):
         prefix = f'clips.{index}'
+        if request.settings.narration=='local_tts' and not clip.narration_text.strip():
+            raise ValueError(f'{prefix}.narration_text is required for local narration')
         if clip.recommended_model != request.settings.video_model:
             raise ValueError(f'{prefix}.recommended_model must match the selected model')
         if request.settings.backend == 'native' and request.settings.video_model in ('ltx','hybrid') and clip.reference_mode != 'image-to-video':

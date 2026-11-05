@@ -1,0 +1,18 @@
+[Unit]
+Description=AI Content Agent durable generation worker
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=@ROOT@
+ExecStart=@ROOT@/.venv/bin/python -m app.workers.application_worker
+Restart=on-failure
+RestartSec=5
+UMask=0077
+Environment=LOG_FORMAT_JSON=true
+Environment=DURABLE_WORKERS=true
+NoNewPrivileges=true
+TimeoutStopSec=120
+
+[Install]
+WantedBy=default.target
