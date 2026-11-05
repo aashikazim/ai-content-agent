@@ -271,6 +271,67 @@ def list_scripts():
     return {"attempts": ScriptGenerationService(DB_PATH).list_attempts()}
 
 
+class ScriptContinuation(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    confirmed: bool = Field(default=False, strict=True)
+
+
+@router.post('/generation/scripts/{attempt_id}/continue', status_code=202)
+def continue_script(attempt_id: UUID, body: ScriptContinuation, background_tasks: BackgroundTasks,
+                    principal=Depends(require_session)):
+    try:
+        identifier = ScriptGenerationService(DB_PATH).resume_chapters(str(attempt_id), principal['username'], body.confirmed)
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from None
+    background_tasks.add_task(execute_script, identifier)
+    return {'attempt_id': identifier, 'status': 'queued'}
+
+
+class ChapterRevisionRequest(BaseModel):
+    model_config=ConfigDict(extra='forbid')
+    revision_instructions: str=Field(default='',max_length=2000)
+
+
+class ChapterRevisionSubmission(BaseModel):
+    model_config=ConfigDict(extra='forbid')
+    quote_id: UUID
+    confirmed: bool=Field(default=False,strict=True)
+
+
+@router.post('/generation/scripts/{attempt_id}/parts/{part_number}/quote')
+def quote_chapter(attempt_id: UUID, part_number: int, body: ChapterRevisionRequest, principal=Depends(require_session)):
+    try:
+        return ScriptGenerationService(DB_PATH).quote_chapter_revision(str(attempt_id),part_number,principal['username'],body.revision_instructions)
+    except (ValueError,PaidScriptError) as error:
+        raise HTTPException(422,str(error)) from None
+
+
+@router.post('/generation/scripts/{attempt_id}/parts/revisions',status_code=202)
+def revise_chapter(attempt_id: UUID, body: ChapterRevisionSubmission, background_tasks: BackgroundTasks,principal=Depends(require_session)):
+    try:
+        identifier=ScriptGenerationService(DB_PATH).submit_chapter_revision(str(attempt_id),str(body.quote_id),principal['username'],body.confirmed)
+    except ValueError as error:
+        raise HTTPException(422,str(error)) from None
+    background_tasks.add_task(execute_script,identifier)
+    return {'attempt_id':identifier,'status':'queued'}
+
+
+@router.post('/generation/scripts/{attempt_id}/parts/revisions/{revision_id}/apply')
+def apply_chapter(attempt_id: UUID,revision_id: UUID,body: ScriptContinuation,principal=Depends(require_session)):
+    try:
+        return ScriptGenerationService(DB_PATH).apply_saved_chapter_revision(str(attempt_id),str(revision_id),principal['username'],body.confirmed)
+    except ValueError as error:
+        raise HTTPException(422,str(error)) from None
+
+
+@router.post('/generation/scripts/{attempt_id}/parts/{part_number}/reconcile')
+def reconcile_chapter(attempt_id: UUID,part_number: int,body: ScriptReconciliation,principal=Depends(require_session)):
+    try:
+        return ScriptGenerationService(DB_PATH).reconcile_chapter(str(attempt_id),part_number,principal['username'],body.notes,body.confirmed)
+    except ValueError as error:
+        raise HTTPException(422,str(error)) from None
+
+
 @router.get("/generation/scripts/{attempt_id}", dependencies=[Depends(require_session)])
 def get_script(attempt_id: UUID):
     attempt = ScriptGenerationService(DB_PATH).get(str(attempt_id))

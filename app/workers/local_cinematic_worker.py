@@ -43,11 +43,26 @@ def ltx_arguments(request, output):
     result = ['ltx_pipelines.distilled']
     for key, value in request['ltx_files'].items():
         result.extend(['--' + key, value])
-    frames = ((request['duration'] * 24 - 1 + 7) // 8) * 8 + 1
+    carry = 17 if request.get('continuation_frames') else 0
+    prompt = request['prompt']
+    if carry:
+        prompt = (f'The opening {carry / 24:.2f} seconds preserve the supplied preceding motion with quiet ambience and no speech. '
+                  f'After that lead-in, continue the action for {request["duration"]} seconds: ' + prompt)
+    frames = ((request['duration'] * 24 + carry - 1 + 7) // 8) * 8 + 1
     result.extend(['--num-frames', str(frames), '--height', str(request['height']), '--width', str(request['width']),
-                   '--frame-rate', '24', '--offload', 'cpu', '--seed', str(request['seed']), '--output-path', str(output), '--prompt', request['prompt']])
-    if request.get('start_image'):
+                   '--frame-rate', '24', '--offload', 'cpu', '--seed', str(request['seed']), '--output-path', str(output), '--prompt', prompt])
+    if carry:
+        for item in request['continuation_frames']:
+            if item['frame'] in {0, 8, 16}:
+                result.extend(['--image', item['path'], str(item['frame']), '1.0'])
+    elif request.get('start_image'):
         result.extend(['--image', request['start_image'], '0', '1.0'])
+    for image in request.get('scene_keyframes',[]):
+        result.extend(['--image',image['path'],str(image['frame']),'1.0'])
+    if request.get('native_chunking'):
+        result.extend(['--chunked', '--chunk-pixel-frames', '97', '--chunk-carry-frames', '25'])
+    for adapter in request.get('character_adapters',[]):
+        result.extend(['--lora',adapter['path'],str(adapter['scale'])])
     return result
 
 
@@ -270,6 +285,12 @@ def generate(request, directory, state, lock_fd):
     if route in {'ltx', 'hybrid'}:
         state.update(stage='ltx_generation', progress=.15)
         run_model('ltx', directory, state, lock_fd)
+    if request.get('continuation_frames') and route in {'ltx', 'hybrid'}:
+        trimmed = directory / 'ltx_timeline.mp4'
+        ffmpeg('-ss', str(17 / 24), '-i', source, '-t', request['duration'],
+               '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', trimmed)
+        source = trimmed
+    ltx_source = source
     if route in {'wan', 'hybrid'}:
         state.update(stage='wan_animation', progress=.55 if route == 'hybrid' else .15)
         driving = directory / 'driving.mp4'
@@ -281,7 +302,7 @@ def generate(request, directory, state, lock_fd):
     state.update(stage='normalizing', progress=.9)
     arguments = ['-i', source]
     if route == 'hybrid':
-        arguments.extend(['-i', directory / 'ltx.mp4', '-map', '0:v:0', '-map', '1:a:0'])
+        arguments.extend(['-i', ltx_source, '-map', '0:v:0', '-map', '1:a:0'])
     arguments.extend(['-t', request['duration'], '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', directory / 'output.mp4'])
     ffmpeg(*arguments)
 

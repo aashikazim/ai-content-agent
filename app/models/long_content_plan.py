@@ -5,14 +5,14 @@ from app.models.content_plan import ContentPlan, Scene
 
 
 class LongContentPlan(ContentPlan):
-    scenes: list[Scene] = Field(min_length=2, max_length=240)
+    scenes: list[Scene] = Field(min_length=2, max_length=600)
 
     @model_validator(mode='after')
     def validate_scenes(self):
         if [scene.scene_number for scene in self.scenes] != list(range(1, len(self.scenes) + 1)):
             raise ValueError('Scene numbers must be sequential')
-        if not 120 <= self.total_duration <= 1200:
-            raise ValueError('Long drama duration must be 120–1200 seconds')
+        if not 120 <= self.total_duration <= 1800:
+            raise ValueError('Long drama duration must be 120–1800 seconds')
         return self
 
 

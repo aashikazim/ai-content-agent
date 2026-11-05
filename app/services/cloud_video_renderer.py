@@ -4,6 +4,7 @@ import json
 import os
 import re
 import subprocess
+import shutil
 from pathlib import Path
 
 from app.services.video_renderer import VideoRenderer
@@ -116,7 +117,43 @@ class CloudVideoRenderer:
         output_dir = Path(output_dir).resolve()
         output_dir.mkdir(parents=True, exist_ok=True)
         rendered, scenes = [], []
+        character_package = None
+        if self.config.narration == 'character_tts':
+            # Injected by CloudVideoService, never looked up in an unrelated default DB.
+            character_package = getattr(self,'cast_package',None)
+            if not character_package:
+                raise MediaValidationError('The confirmed cast voice package is missing')
         for scene in production.content_plan.scenes:
+            cache = None
+            if self.config.video_provider == 'local_cinematic' and self.config.duration_seconds > 240:
+                sources = []
+                for shot in [item for item in production.shots if item.scene_number == scene.scene_number]:
+                    candidate = selected.get(shot.shot_number)
+                    if not candidate or not Path(candidate['clip_path']).is_file():
+                        raise MediaValidationError('Required shot assets are missing')
+                    measured = media_sha256(candidate['clip_path'])
+                    expected = json.loads(candidate.get('media_quality_json') or '{}').get('sha256')
+                    if expected and measured != expected:
+                        raise MediaValidationError('A selected clip changed after validation')
+                    sources.append([shot.model_dump(mode='json'),measured,candidate.get('trim_start_seconds',0),candidate.get('model')])
+                settings={'dimensions':[self.width,self.height],'fps':self.config.fps,'narration':self.config.narration,
+                    'captions':self.config.captions,'narrator_voice':os.getenv('TTS_VOICE','en-us'),'profile_version':1}
+                key = hashlib.sha256(json.dumps({'scene':scene.model_dump(mode='json'),'sources':sources,
+                    'render_settings':settings,'cast':character_package},sort_keys=True).encode()).hexdigest()
+                cache = output_dir.parent / 'scene_cache' / key
+                cache.parent.mkdir(exist_ok=True,mode=0o700)
+                metadata = cache.with_suffix('.json')
+                if metadata.is_file() and cache.with_suffix('.mp4').is_file() and cache.with_suffix('.png').is_file():
+                    try:
+                        saved=json.loads(metadata.read_text())
+                    except (OSError,ValueError):
+                        saved={}
+                    if saved.get('sha256') == media_sha256(cache.with_suffix('.mp4')):
+                        local=output_dir/f'scene_{scene.scene_number}.mp4'
+                        shutil.copyfile(cache.with_suffix('.mp4'),local);local.chmod(0o600)
+                        scenes.append(saved['scene']);rendered.append(local)
+                        shutil.copyfile(cache.with_suffix('.png'),output_dir/f'scene_{scene.scene_number}.png')
+                        continue
             clips = []
             scene_models = set()
             for shot in [item for item in production.shots if item.scene_number == scene.scene_number]:
@@ -126,7 +163,12 @@ class CloudVideoRenderer:
                 scene_models.add(candidate.get('model') or self.config.video_model)
                 raw = output_dir / f'raw_{shot.shot_number}.mp4'
                 filters = f'scale={self.width}:{self.height}:force_original_aspect_ratio=decrease,pad={self.width}:{self.height}:(ow-iw)/2:(oh-ih)/2,fps={self.config.fps},setsar=1,format=yuv420p'
-                run(['ffmpeg', '-y', '-v', 'error', '-ss', str(candidate.get('trim_start_seconds', 0)), '-i', candidate['clip_path'],
+                source_arguments = ['ffmpeg', '-y', '-v', 'error', '-ss', str(candidate.get('trim_start_seconds', 0)), '-i', candidate['clip_path']]
+                if character_package:
+                    from app.services.character_dialogue_audio import render_dialogue
+                    audio = render_dialogue(production,shot,character_package,output_dir/f'dialogue_{shot.shot_number}',self.local_renderer)
+                    source_arguments += ['-i',str(audio),'-map','0:v:0','-map','1:a:0']
+                run([*source_arguments,
                      '-t', str(shot.duration_seconds), '-vf', filters, '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '21',
                      '-an' if self.config.narration == 'local_tts' else '-c:a', *([] if self.config.narration == 'local_tts' else ['aac', '-ar', '48000', '-ac', '2']),
                      str(raw)])
@@ -167,6 +209,14 @@ class CloudVideoRenderer:
                 'source_url': 'https://github.com/Lightricks/LTX-2' if self.config.video_provider == 'local_cinematic' else 'https://runwayml.com' if self.config.video_provider == 'runway' else 'https://aistudio.google.com/docs/omni',
                 'caption_timing': 'estimated phrase timing; manually verify speech alignment', 'captions': timing})
             rendered.append(output)
+            if cache:
+                shutil.copyfile(output,cache.with_suffix('.mp4'))
+                shutil.copyfile(output_dir/f'scene_{scene.scene_number}.png',cache.with_suffix('.png'))
+                temporary=cache.with_suffix('.tmp')
+                temporary.write_text(json.dumps({'sha256':media_sha256(output),'scene':scenes[-1]}))
+                temporary.chmod(0o600);temporary.replace(cache.with_suffix('.json'))
+                for suffix in ('.mp4','.png','.json'):
+                    cache.with_suffix(suffix).chmod(0o600)
         joined = output_dir / 'joined_final.mp4'
         self.local_renderer.concatenate(rendered, joined)
         final = output_dir / 'final_video.mp4'

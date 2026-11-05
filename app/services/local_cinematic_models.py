@@ -83,11 +83,15 @@ def checkpoint_ready(name):
 def validate(config, duration=None):
     if config.video_model not in MODELS:
         raise ValueError('Choose an exact local cinematic model from the catalogue')
+    if config.continuity_mode != 'independent' and not config.cast_package_id:
+        raise ValueError('Confirm a cast package before using anchored or connected generation')
+    if config.video_model == 'wan2.2-animate-2' and config.continuity_mode == 'connected':
+        raise ValueError('Wan-only uses approved identity images and driving motion; choose anchored continuity or the LTX + Wan hybrid for connected shots')
     if config.video_input_mode not in MODELS[config.video_model]['input_modes']:
         raise ValueError('Wan-Animate-2 requires a character reference image and a driving motion video')
     if config.video_model == 'wan2.2-animate-2' and config.narration == 'model_audio':
         raise ValueError('Wan-Animate-2 generates silent animation; choose local narration or the hybrid model for LTX audio')
-    if config.video_model == 'wan2.2-animate-2' and (config.start_image_reference_id or config.shot_image_reference_ids):
+    if config.video_model == 'wan2.2-animate-2' and (config.start_image_reference_id or config.shot_image_reference_ids or config.scene_image_reference_ids):
         raise ValueError('Wan uses its selected character reference and driving video, not LTX scene-start frames')
     if duration is not None and not 3 <= duration <= 10:
         raise ValueError('Local cinematic shots must be 3–10 seconds')
@@ -104,9 +108,13 @@ def frame_count(seconds, fps=24):
     return ((seconds * fps - 1 + 7) // 8) * 8 + 1
 
 
-def route(model, shot):
+def route(model, shot, continuity_mode='independent'):
     if model == 'wan2.2-animate-2':
         if len(shot['character_ids']) != 1:
             raise ValueError('Wan animation requires exactly one character per shot; use hybrid for establishing or multi-character shots')
         return 'wan'
+    if model == 'ltx-wan-hybrid' and continuity_mode == 'connected' and shot.get('transition') == 'continue':
+        # Wan reanchors to its identity image and can reset the composition.
+        # Continue motion in LTX from the selected Wan/LTX output instead.
+        return 'ltx'
     return 'hybrid' if model == 'ltx-wan-hybrid' and len(shot['character_ids']) == 1 else 'ltx'

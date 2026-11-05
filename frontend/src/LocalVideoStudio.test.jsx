@@ -21,6 +21,8 @@ function api() {
   const draft = () => ({ attempt_id: scriptId, status: 'completed', configuration: config, production_plan: plan });
   return vi.fn(async (path, options) => {
     if (path === '/generation/catalog') return catalog;
+    if (path === '/generation/cast-packages') return {packages:[]};
+    if (path.startsWith('/generation/cast-packages/')) return {characters:[]};
     if (path === '/generation/script-quotes') return { paid: true, quote_id: scriptId, maximum_cost_usd: '0.21' };
     if (path === '/generation/scripts' && options?.method === 'POST') { generated = true; config = JSON.parse(options.body).configuration; return draft(); }
     if (path === '/generation/scripts') return { attempts: [{ ...draft(), attempt_id: cloudId, configuration: { video_provider: 'runway' }, production_plan: { ...plan, content_plan: { title: 'Cloud-only story' } } }, ...(generated ? [draft()] : [])] };
@@ -33,6 +35,15 @@ function api() {
   });
 }
 const mutations = request => request.mock.calls.filter(([, options]) => options?.method === 'POST');
+
+it('explains Wan-on-cuts and LTX continuation before connected hybrid work is authorized',async()=>{
+  const user=userEvent.setup(),request=api();render(<LocalVideoStudio request={request}/>);
+  await screen.findByLabelText('Local video model');
+  await user.selectOptions(screen.getByLabelText('Local video model'),'ltx-wan-hybrid');
+  await user.selectOptions(screen.getByLabelText('Character continuity'),'connected');
+  expect(screen.getByText(/In connected mode, Wan establishes identity on camera cuts/)).toBeVisible();
+  expect(mutations(request)).toHaveLength(0);
+});
 
 it('opens with simple local defaults, manual input and no automatic mutations', async () => {
   const request = api(); render(<LocalVideoStudio request={request} />);
@@ -63,6 +74,7 @@ it('loads the example, authorizes Claude separately, and hands the completed scr
   const user = userEvent.setup(); const request = api(); render(<LocalVideoStudio request={request} />);
   await user.click(await screen.findByText(/Example: The Missing Lunch/));
   await user.click(screen.getByRole('button', { name: 'Load this example' }));
+  await user.selectOptions(screen.getByLabelText('Character continuity'),'independent');
   expect(screen.getByLabelText('Your story idea').value).toContain('Maya');
   expect(screen.getByRole('button', { name: 'Generate script draft' })).toBeDisabled();
   await user.click(screen.getByRole('button', { name: /Check access & estimate/ }));
@@ -84,6 +96,7 @@ it('plans a four-minute screenplay with enough shots and keeps Ollama independen
   const user = userEvent.setup(); const request = api(); render(<LocalVideoStudio request={request} />);
   await user.selectOptions(await screen.findByLabelText('Video format'), 'long');
   await user.selectOptions(screen.getByLabelText('Target duration'), '240');
+  await user.selectOptions(screen.getByLabelText('Character continuity'),'independent');
   await user.selectOptions(screen.getByLabelText('Story input'), 'script');
   await user.type(screen.getByLabelText('Your screenplay'), 'Maya and Theo resolve a misunderstanding.');
   await user.click(screen.getByText('Advanced settings'));
@@ -131,4 +144,28 @@ it('opens from the admin navigation without asking for another API key', async (
   expect(screen.queryByLabelText(/api key/i)).not.toBeInTheDocument();
   expect(within(screen.getByRole('navigation', { name: 'Main navigation' })).getByRole('button', { name: 'Local Video Studio' })).toHaveAttribute('aria-current', 'page');
   expect(mutations(request)).toHaveLength(0);
+});
+
+it('requires an approved cast and an explicit chapter budget for a thirty-minute film',async()=>{
+  const user=userEvent.setup(),request=api(),base=request.getMockImplementation();
+  const castId='da7fb41f-eafa-493d-9b28-31358dc98854';
+  request.mockImplementation(async(path,options)=>{
+    if(path==='/generation/cast-packages')return {packages:[{package_id:castId,name:'Lunch cast',characters:[{character_id:'maya',name:'Maya',reference_ids:[scriptId],primary_reference_id:scriptId,wardrobe:'Mustard cardigan'}]}]};
+    if(path==='/generation/script-quotes')return {paid:true,quote_id:scriptId,maximum_cost_usd:'10.60',max_requests:10};
+    return base(path,options);
+  });
+  render(<LocalVideoStudio request={request}/>);
+  await user.type(await screen.findByLabelText('Your story idea'),'Maya and Theo solve the lunchbox mystery.');
+  expect(screen.getByRole('button',{name:/Check access & estimate/})).toBeDisabled();
+  await screen.findByRole('option',{name:/Lunch cast/});
+  await user.selectOptions(screen.getByLabelText('Approved cast package'),castId);
+  await user.selectOptions(screen.getByLabelText('Video format'),'long');
+  await user.selectOptions(screen.getByLabelText('Target duration'),'1800');
+  await user.click(screen.getByRole('button',{name:/Check access & estimate/}));
+  expect(screen.getByRole('button',{name:'Generate script draft'})).toBeDisabled();
+  await user.click(await screen.findByRole('checkbox',{name:/I authorize up to 10 chapter requests/}));
+  await user.click(screen.getByRole('button',{name:'Generate script draft'}));
+  const submission=mutations(request).find(([path])=>path==='/generation/scripts');
+  expect(JSON.parse(submission[1].body).configuration).toMatchObject({duration_seconds:1800,max_shots:360,cast_package_id:castId,continuity_mode:'anchored',max_cost_usd:'25'});
+  expect(mutations(request).some(([path])=>path==='/generation/videos' || /publish/.test(path))).toBe(false);
 });

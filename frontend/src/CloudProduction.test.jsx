@@ -2,7 +2,7 @@ import React from 'react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import CloudProduction from './CloudProduction.jsx';
+import CloudProduction, {CharacterRegistry} from './CloudProduction.jsx';
 afterEach(()=>{cleanup();vi.restoreAllMocks();});
 const identifier='ba7fb41f-eafa-493d-9b28-31358dc98848';
 const scriptId='ba7fb41f-eafa-493d-9b28-31358dc98849';
@@ -21,6 +21,18 @@ function api({lost=false,existing=false}={}) {
   });
 }
 const paid = request=>request.mock.calls.filter(([path,options])=>path==='/generation/videos' && options?.method==='POST');
+it('keeps cast and scene-image upload forms associated with their own inputs',async()=>{
+  const user=userEvent.setup(),request=vi.fn();
+  const {container}=render(<><CharacterRegistry local request={request} references={[]} reload={vi.fn()}/><CharacterRegistry local request={request} references={[]} reload={vi.fn()}/></>);
+  const summaries=screen.getAllByText(/Add character images or scene-start images/);
+  await user.click(summaries[0]);await user.click(summaries[1]);
+  const fields=screen.getAllByLabelText('Character ID');
+  expect(fields[0].id).not.toBe(fields[1].id);
+  await user.type(fields[1],'scene_1');expect(fields[0]).toHaveValue('');expect(fields[1]).toHaveValue('scene_1');
+  const ids=[...container.querySelectorAll('[id]')].map(element=>element.id);
+  expect(new Set(ids).size).toBe(ids.length);
+  expect(request).not.toHaveBeenCalled();
+});
 it('confirms local GPU work without claiming a paid video request',async()=>{
   const user=userEvent.setup(); const base=api();
   const request=vi.fn(async(path,options)=>{
@@ -45,13 +57,35 @@ it('confirms local GPU work without claiming a paid video request',async()=>{
 
 it('shows local performance and only regeneration for local candidates',async()=>{
   const user=userEvent.setup(); const base=api();
-  const request=vi.fn(async(path,options)=>path==='/generation/videos' && !options?.method ? {productions:[{...production,configuration:{video_provider:'local_cinematic'},shots:[{...production.shots[0],provider:'local_cinematic',usage:{stage:'completed',progress:1,elapsed_seconds:120,peak_gpu_memory_mb:50000}}]}]} : base(path,options));
+  const request=vi.fn(async(path,options)=>path==='/generation/videos' && !options?.method ? {productions:[{...production,configuration:{video_provider:'local_cinematic'},shots:[{...production.shots[0],provider:'local_cinematic',generation_route:'ltx',usage:{stage:'completed',progress:1,elapsed_seconds:120,peak_gpu_memory_mb:50000}}]}]} : base(path,options));
   render(<CloudProduction request={request}/>);
   await screen.findByLabelText('Existing production');
   await user.selectOptions(screen.getByLabelText('Existing production'),identifier);
   expect(screen.getByRole('progressbar',{name:'Local generation progress'})).toHaveAttribute('value','1');
   expect(screen.queryByRole('option',{name:'Edit this shot'})).not.toBeInTheDocument();
   expect(screen.getByText(/50000 MiB/)).toBeVisible();
+  expect(screen.getByText('Generation stages: LTX moving video.')).toBeVisible();
+});
+
+it('allows manual continuity inspection of a completed shot while later local shots run',async()=>{
+  const user=userEvent.setup(),base=api();
+  const current={...production,status:'processing',configuration:{video_provider:'local_cinematic',continuity_mode:'anchored',narration:'character_tts'}};
+  const request=vi.fn(async(path,options)=>{
+    if(path==='/generation/videos' && !options?.method)return {productions:[current]};
+    if(path===`/generation/videos/${identifier}`)return current;
+    if(path.endsWith('/continuity'))return current;
+    return base(path,options);
+  });
+  render(<CloudProduction request={request}/>);
+  await screen.findByLabelText('Existing production');
+  await user.selectOptions(screen.getByLabelText('Existing production'),identifier);
+  await user.click(screen.getByText('Compare this actor with the cast'));
+  const confirm=screen.getByRole('button',{name:'Confirm this shot’s continuity'});
+  expect(confirm).toBeDisabled();
+  await user.click(screen.getByRole('checkbox',{name:/I compared this selected actor/}));
+  expect(confirm).toBeEnabled();await user.click(confirm);
+  expect(request.mock.calls.filter(([,options])=>options?.method==='POST').map(([path])=>path)).toEqual([`/generation/videos/${identifier}/shots/${identifier}/continuity`]);
+  expect(screen.getByText(/Your selected local voices and captions are applied/)).toBeVisible();
 });
 
 it('binds Wan driving motion assignments to the generation request',async()=>{

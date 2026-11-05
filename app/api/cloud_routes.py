@@ -12,6 +12,7 @@ from app.services.character_reference_service import ReferenceUpload
 from app.services.cloud_video_service import CloudVideoService
 from app.services.gemini_video_service import VideoProviderError
 from app.services.driving_reference_service import DrivingUpload
+from app.services.cinematic_cast_service import CinematicCastService, CastPackageUpload
 
 router = APIRouter(prefix='/api/v1/generation', dependencies=[Depends(require_session)])
 
@@ -34,14 +35,37 @@ class QuoteRequest(BaseModel):
     script_attempt_id: UUID
     reference_ids: list[UUID] | None = Field(default=None, max_length=3)
     start_image_reference_id: UUID | None = None
-    shot_image_reference_ids: dict[int, UUID] | None = Field(default=None, max_length=240)
-    shot_driving_video_ids: dict[int, UUID] | None = Field(default=None, max_length=240)
+    shot_image_reference_ids: dict[int, UUID] | None = Field(default=None, max_length=600)
+    shot_driving_video_ids: dict[int, UUID] | None = Field(default=None, max_length=600)
+    scene_image_reference_ids: dict[int, UUID] | None = Field(default=None, max_length=600)
+    scene_character_reference_ids: dict[int, dict[str, UUID]] | None = Field(default=None, max_length=600)
 
 
 class PaidSubmission(BaseModel):
     model_config = ConfigDict(extra='forbid')
     quote_id: UUID
     confirmed: bool = Field(default=False, strict=True)
+
+
+@router.get('/cast-packages')
+def cast_packages():
+    return invoke(lambda: {'packages': CinematicCastService(os.getenv('DATABASE_PATH', 'data/trends.db')).list_packages()})
+
+
+@router.get('/ltx-adapters')
+def character_adapters():
+    from app.services.cinematic_adapter_service import CinematicAdapterService
+    return invoke(lambda: {'adapters':CinematicAdapterService().list_adapters()})
+
+
+@router.post('/cast-packages', status_code=201)
+def create_cast_package(body: CastPackageUpload):
+    return invoke(lambda: CinematicCastService(os.getenv('DATABASE_PATH', 'data/trends.db')).create(body))
+
+
+@router.get('/cast-packages/{package_id}')
+def get_cast_package(package_id: UUID):
+    return invoke(lambda: CinematicCastService(os.getenv('DATABASE_PATH','data/trends.db')).get(str(package_id)))
 
 
 @router.get('/references')
@@ -64,7 +88,7 @@ def reference_image(reference_id: UUID):
 
 @router.post('/video-quotes')
 def video_quote(body: QuoteRequest, principal=Depends(require_session)):
-    options = {key: getattr(body, key) for key in ('start_image_reference_id', 'shot_image_reference_ids', 'shot_driving_video_ids') if key in body.model_fields_set}
+    options = {key: getattr(body, key) for key in ('start_image_reference_id', 'shot_image_reference_ids', 'shot_driving_video_ids', 'scene_image_reference_ids','scene_character_reference_ids') if key in body.model_fields_set}
     return invoke(lambda: service().quote(str(body.script_attempt_id), principal['username'], body.reference_ids,
         **options))
 
@@ -140,7 +164,7 @@ def shot_video(production_id: UUID, attempt_id: UUID):
 
 class ShotQuote(BaseModel):
     model_config = ConfigDict(extra='forbid')
-    shot_number: int = Field(ge=1, le=240, strict=True)
+    shot_number: int = Field(ge=1, le=600, strict=True)
     operation: str = Field(pattern=r'^(generate|edit|extend)$')
     instructions: str = Field(default='', max_length=2000)
     parent_attempt_id: UUID | None = None
@@ -211,13 +235,37 @@ def reconcile_shot(production_id: UUID, attempt_id: UUID, body: Reconciliation, 
 def continue_video(production_id: UUID, body: Confirmation, tasks: BackgroundTasks):
     instance = service()
     identifiers = invoke(lambda: instance.continue_queued(str(production_id), body.confirmed))
-    tasks.add_task(instance.process, str(production_id), submit_queued=True, attempt_ids=identifiers)
+    config = instance.storage.get(str(production_id))['configuration']
+    if config.get('video_provider') == 'local_cinematic' and (config.get('continuity_mode','independent') != 'independent' or config['duration_seconds'] > 240):
+        tasks.add_task(instance.dispatch_local, str(production_id), identifiers)
+    else:
+        tasks.add_task(instance.process, str(production_id), submit_queued=True, attempt_ids=identifiers)
     return {'production_id': str(production_id), 'status': 'processing', 'authorized_unsubmitted_shots': len(identifiers)}
+
+
+@router.post('/videos/{production_id}/pause')
+def pause_local(production_id: UUID, body: Confirmation):
+    if not body.confirmed:
+        raise HTTPException(422, 'Confirm pausing further local submissions')
+    from app.services.local_production_runner import LocalProductionRunner
+    return invoke(lambda: LocalProductionRunner(service()).pause(str(production_id)))
 
 
 @router.post('/videos/{production_id}/review')
 def send_to_review(production_id: UUID, body: QualityReview):
     return invoke(lambda: service().send_to_review(str(production_id), **body.model_dump()))
+
+
+@router.get('/videos/{production_id}/shots/{attempt_id}/continuity.jpg')
+def continuity_sheet(production_id: UUID, attempt_id: UUID):
+    from app.services.cinematic_inspection import comparison_sheet
+    path=invoke(lambda: comparison_sheet(service(),str(production_id),str(attempt_id)))
+    return FileResponse(path,media_type='image/jpeg',headers={'Cache-Control':'no-store'})
+
+
+@router.post('/videos/{production_id}/shots/{attempt_id}/continuity')
+def confirm_continuity(production_id: UUID, attempt_id: UUID, body: Confirmation):
+    return invoke(lambda: service().accept_continuity(str(production_id),str(attempt_id),body.confirmed))
 
 
 @router.post('/videos/{production_id}/discard-queued')

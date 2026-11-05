@@ -19,15 +19,16 @@ class CharacterProfile(BaseModel):
 
 class DialogueLine(BaseModel):
     model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
-    scene_number: int = Field(ge=1, le=240)
+    scene_number: int = Field(ge=1, le=600)
     character_id: str = Field(min_length=1, max_length=32)
     text: str = Field(min_length=1, max_length=1000)
 
 
 class PlannedShot(BaseModel):
     model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
-    shot_number: int = Field(ge=1, le=240)
-    scene_number: int = Field(ge=1, le=240)
+    shot_number: int = Field(ge=1, le=600)
+    scene_number: int = Field(ge=1, le=600)
+    transition: Literal['cut', 'continue'] = 'cut'
     duration_seconds: int = Field(ge=2, le=30, strict=True)
     action: str = Field(min_length=1, max_length=1500)
     camera: str = Field(min_length=1, max_length=500)
@@ -40,10 +41,11 @@ class ProductionPlan(BaseModel):
     schema_version: Literal[1] = 1
     content_type: Literal["realistic_short", "short_drama", "animated_comedy", "news", "long_drama"]
     factual_status: Literal["fiction", "satire", "unverified"] = "unverified"
-    outline: list[str] = Field(min_length=1, max_length=240)
+    continuity_notes: str = Field(default='', max_length=3000)
+    outline: list[str] = Field(min_length=1, max_length=600)
     characters: list[CharacterProfile] = Field(default_factory=list, max_length=3)
     dialogue: list[DialogueLine] = Field(default_factory=list, max_length=1200)
-    shots: list[PlannedShot] = Field(default_factory=list, max_length=240)
+    shots: list[PlannedShot] = Field(default_factory=list, max_length=600)
     content_plan: ContentPlan | LongContentPlan
 
     @model_validator(mode="after")
@@ -82,6 +84,11 @@ class ProductionPlan(BaseModel):
             for shot in self.shots:
                 if shot.scene_number not in scenes or not set(shot.character_ids).issubset(ids):
                     raise ValueError("Shots must reference existing scenes and characters")
+                if shot.transition == 'continue' and (shot.shot_number == 1 or
+                        self.shots[shot.shot_number - 2].scene_number != shot.scene_number):
+                    raise ValueError('Continuation must follow a shot in the same scene')
+                if shot.transition == 'continue' and set(shot.character_ids) != set(self.shots[shot.shot_number - 2].character_ids):
+                    raise ValueError('Continuation must keep the same on-screen cast; use a cut and approved scene image when switching actors')
             import re
             words = lambda text: re.findall(r"\w+", text.casefold())
             for number, scene in scenes.items():

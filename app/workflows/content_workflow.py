@@ -208,7 +208,11 @@ class ContentWorkflow:
             production_id = service.production_id_for_job(state["job_id"])
             if not production_id:
                 raise ValueError("Missing cloud production authorization")
-            service.process(production_id, submit_queued=True)
+            config = state.get('generation_config') or {}
+            if config.get('video_provider') == 'local_cinematic' and (config.get('continuity_mode', 'independent') != 'independent' or config.get('duration_seconds',45) > 240):
+                service.dispatch_local(production_id)
+            else:
+                service.process(production_id, submit_queued=True)
             return {"video_path": self.jobs.get_job(state["job_id"]).get("video_path")}
 
         plan_data = (

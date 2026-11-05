@@ -30,6 +30,8 @@ from app.services import runway_media
 from app.services import local_cinematic_models
 from app.services.local_cinematic_service import LocalCinematicService
 from app.services.driving_reference_service import DrivingReferenceService
+from app.services.cinematic_cast_service import CinematicCastService
+from app.services import cinematic_continuity
 
 _UNSET = object()
 
@@ -41,6 +43,7 @@ class CloudVideoService:
         self.content_storage = ContentStorage(db_path, os.getenv('CONTENT_PLANS_DIR', 'data/plans'))
         self.references = CharacterReferenceService(db_path)
         self.driving = DrivingReferenceService(db_path)
+        self.cast = CinematicCastService(db_path)
         self.provider = provider
         self.renderer_factory = renderer_factory or CloudVideoRenderer
         self.root = Path(os.getenv('CLOUD_VIDEOS_DIR', 'data/videos/cloud')).resolve()
@@ -57,7 +60,10 @@ class CloudVideoService:
     def all_references(self, config):
         ids = list(dict.fromkeys([*config.character_reference_ids,
             *([config.start_image_reference_id] if config.start_image_reference_id else []),
-            *config.shot_image_reference_ids.values()]))
+            *config.shot_image_reference_ids.values(), *config.scene_image_reference_ids.values(),
+            *(identifier for scene in config.scene_character_reference_ids.values() for identifier in scene.values())]))
+        if config.cast_package_id:
+            ids = list(dict.fromkeys([*ids, *(item['reference_id'] for item in self.cast.get(config.cast_package_id)['assets'])]))
         # Several scene frames may depict the same actor. Only the independent
         # character-reference list needs the registry's one-image-per-actor rule.
         return [self.references.verified([identifier])[0] for identifier in ids]
@@ -88,6 +94,14 @@ class CloudVideoService:
         runway = config.video_provider == 'runway'
         local = config.video_provider == 'local_cinematic'
         if local:
+            plan = request.get('production_plan') or self.storage.get(request['production_id'])['production_plan']
+            routes = {str(shot['shot_number']):local_cinematic_models.route(config.video_model,shot,config.continuity_mode) for shot in plan['shots']}
+            if request['operation']=='create':
+                request['local_shot_routes']=routes
+            else:
+                request['local_route']=routes[str(request['shot_number'])]
+            if config.cast_package_id:
+                request['cast_sha256'] = self.cast.get(config.cast_package_id)['sha256']
             request['driving_references'] = [{'reference_id': ref['reference_id'], 'sha256': ref['sha256']}
                 for ref in (self.driving.verified(identifier) for identifier in dict.fromkeys(config.shot_driving_video_ids.values()))]
         estimate = sum((runway_models.operation_estimate(config, request['operation'], duration, request.get('provider_model'))
@@ -97,7 +111,12 @@ class CloudVideoService:
             if not script_id:
                 script_id = conn.execute('SELECT script_attempt_id FROM video_productions WHERE production_id=?', (request['production_id'],)).fetchone()[0]
             script_cost = conn.execute('SELECT maximum_cost_usd FROM script_generation_attempts WHERE attempt_id=?', (script_id,)).fetchone()
-        script_estimate = Decimal(script_cost[0] or '0')
+            revision_estimate=Decimal(0)
+            if conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='script_part_revision_quotes'").fetchone():
+                revision_estimate=sum((Decimal(row[0] or '0') for row in conn.execute('''SELECT a.maximum_cost_usd
+                    FROM script_generation_attempts a JOIN script_part_revision_quotes r ON r.quote_id=a.quote_id
+                    WHERE r.parent_attempt_id=?''',(script_id,))),Decimal(0))
+        script_estimate = Decimal(script_cost[0] or '0')+revision_estimate
         request['script_estimate_usd'] = str(script_estimate)
         prior = script_estimate
         if request.get('production_id'):
@@ -121,13 +140,22 @@ class CloudVideoService:
                 'estimated_credits': str(estimate * 100) if runway else None,
                 'available_credits': account.get('available_credits') if runway else None,
                 'native_resolution': (next(model['native_resolution'] for model in local_cinematic_models.catalog_models() if model['id']==config.video_model) if local else (config.resolution if request.get('provider_model')=='aleph2' else runway_models.MODELS.get(request.get('provider_model',config.video_model),{}).get('native_resolution',config.resolution)) if runway else '720p'),
-                'notice': ('Local GPU generation: no provider video fee or media transfer. Electricity, runtime and any separately authorized OpenAI script cost still apply. Distilled LTX-2.5 uses the lighter convolutional VAE at a 512px short edge; Wan-Animate-2 uses a 384px short edge, 49-frame windows and 10 steps. Final delivery is upscaled locally. Single-actor hybrid shots retain LTX audio after Wan animation; multi-actor/establishing shots use LTX only. Continuity and speech require human inspection. No automatic retry or still fallback.' if local else (('The quoted source window is uploaded for a visual edit; original speech is preserved locally. ' if request['operation']=='edit' else 'Continuation generates only the added seconds from the parent final frame, then joins locally. The screenplay duration stays fixed; select a trim window. ' if request['operation']=='extend' else '') if runway else '') + ('Runway standard/list-price estimate at $0.01 per credit; no promotional discount assumed. Balance is a snapshot, not a reservation. Authorized source media, selected images and prompts go to Runway and its selected model provider. Local FFmpeg normalizes resolution/FPS. Character/voice continuity needs human review. ' if runway else 'Google stores background interactions for up to 55 days. Selected images, script and prompts are sent to Google. Character and voice continuity are not guaranteed. Extension billing/output semantics need manual inspection. ') + 'Estimate only, not a guaranteed invoice cap. One paid request per listed shot; no automatic retries.'),
+                'notice': ('Local GPU generation: no provider video fee or media transfer. Electricity, runtime and any separately authorized OpenAI script cost still apply. Distilled LTX-2.5 uses the lighter convolutional VAE at a 512px short edge; Wan-Animate-2 uses a 384px short edge, 49-frame windows and 10 steps. Final delivery is upscaled locally. Hybrid anchors single-actor cuts with Wan and retains LTX audio. In connected mode, continuous action uses LTX from the selected preceding clip without another Wan pass, which can reset composition. Multi-actor/establishing shots use LTX only. Each newly quoted attempt freezes its stages; older authorizations keep their original behavior. Continuity and speech require human inspection. No automatic retry or still fallback.' if local else (('The quoted source window is uploaded for a visual edit; original speech is preserved locally. ' if request['operation']=='edit' else 'Continuation generates only the added seconds from the parent final frame, then joins locally. The screenplay duration stays fixed; select a trim window. ' if request['operation']=='extend' else '') if runway else '') + ('Runway standard/list-price estimate at $0.01 per credit; no promotional discount assumed. Balance is a snapshot, not a reservation. Authorized source media, selected images and prompts go to Runway and its selected model provider. Local FFmpeg normalizes resolution/FPS. Character/voice continuity needs human review. ' if runway else 'Google stores background interactions for up to 55 days. Selected images, script and prompts are sent to Google. Character and voice continuity are not guaranteed. Extension billing/output semantics need manual inspection. ') + 'Estimate only, not a guaranteed invoice cap. One paid request per listed shot; no automatic retries.'),
                 'request_summary': {'operation': request['operation'], 'shot_number': request.get('shot_number'), 'instructions': request.get('instructions', ''), 'reference_count': len(refs), 'durations': durations, 'candidate_duration':request.get('target_duration'), 'source':request.get('source')},
                 'source_url': local_cinematic_models.MODELS[config.video_model]['source_url'] if local else runway_models.SOURCE if runway else 'https://aistudio.google.com/docs/pricing#gemini-omni-1.1-flash'}
 
-    def quote(self, script_attempt_id, actor, reference_ids=None, *, start_image_reference_id=_UNSET, shot_image_reference_ids=None, shot_driving_video_ids=None):
+    def quote(self, script_attempt_id, actor, reference_ids=None, *, start_image_reference_id=_UNSET, shot_image_reference_ids=None, shot_driving_video_ids=None, scene_image_reference_ids=None, scene_character_reference_ids=None):
         config, production = self.script(script_attempt_id)
+        if config.cast_package_id:
+            package = self.cast.get(config.cast_package_id)
+            primary = [item['primary_reference_id'] for item in package['characters']]
+            config = GenerationConfig.model_validate(config.model_copy(update={'character_reference_ids': primary}))
         if reference_ids is not None:
+            if config.cast_package_id:
+                allowed = {item['reference_id'] for item in package['assets']}
+                if any(str(item) not in allowed for item in reference_ids):
+                    raise ValueError('Use identity images from the approved cast package')
+                reference_ids = reference_ids or primary
             config = config.model_copy(update={'character_reference_ids': reference_ids})
             config = GenerationConfig.model_validate(config)
         updates = {}
@@ -137,6 +165,10 @@ class CloudVideoService:
             updates['shot_image_reference_ids'] = shot_image_reference_ids
         if shot_driving_video_ids is not None:
             updates['shot_driving_video_ids'] = shot_driving_video_ids
+        if scene_image_reference_ids is not None:
+            updates['scene_image_reference_ids'] = scene_image_reference_ids
+        if scene_character_reference_ids is not None:
+            updates['scene_character_reference_ids'] = scene_character_reference_ids
         config = GenerationConfig.model_validate(config.model_copy(update=updates))
         production.validate_configuration(config)
         self.validate_references(config, production)
@@ -155,15 +187,34 @@ class CloudVideoService:
         self.all_references(config)
         if config.video_provider == 'local_cinematic':
             known = {shot.shot_number for shot in production.shots}
+            if not set(config.scene_image_reference_ids).issubset({scene.scene_number for scene in production.content_plan.scenes}):
+                raise ValueError('Scene images must reference actual screenplay scene numbers')
+            if not set(config.scene_character_reference_ids).issubset({scene.scene_number for scene in production.content_plan.scenes}):
+                raise ValueError('Scene identities must reference actual screenplay scene numbers')
+            package = self.cast.get(config.cast_package_id) if config.cast_package_id else None
+            if config.video_model=='ltx-2.5' and config.scene_character_reference_ids:
+                raise ValueError('Independent scene identity images apply to Wan/hybrid; use composed scene images for LTX')
+            for scene in config.scene_character_reference_ids.values():
+                for actor, identity in scene.items():
+                    ref=self.references.verified([identity])[0]
+                    if ref['character_id']!=actor or actor not in {item.character_id for item in production.characters}:
+                        raise ValueError('A scene identity image belongs to a different character')
+                    member=next((item for item in package['characters'] if item['character_id']==actor),None) if package else None
+                    if package and (not member or str(identity) not in member['reference_ids']):
+                        raise ValueError('Scene identities must use approved views from the cast package')
             if not (set(config.shot_image_reference_ids) | set(config.shot_driving_video_ids)).issubset(known):
                 raise ValueError('Local media assignments must reference actual screenplay shots')
-            if config.video_input_mode == 'text' and (config.start_image_reference_id or config.shot_image_reference_ids):
+            if config.video_input_mode == 'text' and (config.start_image_reference_id or config.shot_image_reference_ids or config.scene_image_reference_ids):
                 raise ValueError('Choose image input before assigning LTX scene start frames')
-            if config.video_input_mode == 'image' and config.video_model != 'wan2.2-animate-2' and any(not config.shot_image_reference_ids.get(shot.shot_number, config.start_image_reference_id) for shot in production.shots):
+            if (config.video_input_mode == 'image' or config.continuity_mode != 'independent') and config.video_model != 'wan2.2-animate-2' and any(not (
+                cinematic_continuity.previous_shot(production, shot.model_dump(), config) or config.shot_image_reference_ids.get(shot.shot_number)
+                or config.scene_image_reference_ids.get(shot.scene_number) or config.start_image_reference_id) for shot in production.shots):
                 raise ValueError('LTX image-to-video needs an explicitly selected scene start frame for every shot')
             refs = {ref['character_id']: ref for ref in self.references.verified(config.character_reference_ids)}
+            if config.cast_package_id and set(refs) != {item['character_id'] for item in self.cast.get(config.cast_package_id)['characters']}:
+                raise ValueError('Select one approved identity reference for every character in the cast package')
             for shot in production.shots:
-                route = local_cinematic_models.route(config.video_model, shot.model_dump())
+                route = local_cinematic_models.route(config.video_model, shot.model_dump(),config.continuity_mode)
                 if route in {'wan', 'hybrid'} and shot.character_ids[0] not in refs:
                     raise ValueError('Select a character reference for every single-actor Wan/hybrid shot')
                 driver = config.shot_driving_video_ids.get(shot.shot_number)
@@ -210,6 +261,8 @@ class CloudVideoService:
         if request['references'] != [{'reference_id': ref['reference_id'], 'sha256': ref['sha256']} for ref in refs]:
             raise ValueError('Reference assets changed; obtain a new quote')
         if config.video_provider == 'local_cinematic':
+            if config.cast_package_id and request.get('cast_sha256') != self.cast.get(config.cast_package_id)['sha256']:
+                raise ValueError('Cast package changed; prepare a new request')
             current = [{'reference_id': ref['reference_id'], 'sha256': ref['sha256']}
                 for ref in (self.driving.verified(identifier) for identifier in dict.fromkeys(config.shot_driving_video_ids.values()))]
             if request.get('driving_references', []) != current:
@@ -273,7 +326,9 @@ class CloudVideoService:
                 (production_id, job_id, request['script_attempt_id'], config.model_dump_json(),
                  production.model_dump_json(), 'queued', now, now))
             for shot in production.shots:
-                self.insert_shot(conn, production_id, shot, quote_id, config=config)
+                route=request.get('local_shot_routes',{}).get(str(shot.shot_number))
+                self.insert_shot(conn, production_id, shot, quote_id, config=config,
+                    metadata={'local_route':route} if route else None)
             self.storage.event(conn, production_id, 'authorized', 'Human authorized the quoted shot batch; script draft reused without a new script request')
         return self.storage.get(production_id)
 
@@ -281,6 +336,10 @@ class CloudVideoService:
         with self.storage.connect() as conn:
             row = conn.execute('SELECT production_id FROM video_productions WHERE job_id = ?', (job_id,)).fetchone()
         return row[0] if row else None
+
+    def dispatch_local(self, identifier, attempt_ids=None):
+        from app.services.local_production_runner import LocalProductionRunner
+        return LocalProductionRunner(self).launch(identifier, attempt_ids)
 
     def prompt(self, production, config, request, refs):
         shot = request['shot']
@@ -294,8 +353,9 @@ class CloudVideoService:
             selected_refs = {ref['character_id']:ref for ref in refs if ref['character_id'] in shot['character_ids']}
             for character in characters:
                 ref = selected_refs.get(character['character_id'], {})
-                paragraphs.append(f"{character['name']} appears as {ref.get('description') or character['description']}.")
-                if ref.get('wardrobe'):
+                description=character['description'] if config.cast_package_id else ref.get('description') or character['description']
+                paragraphs.append(f"{character['name']} appears as {description}.")
+                if ref.get('wardrobe') and not config.cast_package_id:
                     paragraphs.append(f"{character['name']} wears {ref['wardrobe']}.")
             paragraphs.extend([shot['action'], shot['camera']])
             if config.narration == 'model_audio' and shot['spoken_text'].strip():
@@ -307,7 +367,7 @@ class CloudVideoService:
                 for identifier,text in spoken:
                     speaker = cast.get(identifier)
                     name = speaker.name if speaker else 'An off-camera narrator'
-                    voice = selected_refs.get(identifier,{}).get('voice_notes') or (speaker.voice_notes if speaker else '') or 'calm, natural'
+                    voice = ((speaker.voice_notes if speaker else '') if config.cast_package_id else selected_refs.get(identifier,{}).get('voice_notes') or (speaker.voice_notes if speaker else '')) or 'calm, natural'
                     words = json.dumps(' '.join(text.split()),ensure_ascii=False)
                     paragraphs.append(f"{name} says in {production.content_plan.language}, {words}, with a {voice.rstrip('.').lower()} voice.")
                 paragraphs.append('Quiet natural environmental ambience continues beneath the speech.')
@@ -419,6 +479,7 @@ Do not invent evidence or real-world verification; this is an AI-generated visua
             raise ValueError('Video production not found')
         config = GenerationConfig.model_validate(value['configuration'])
         production = ProductionPlan.model_validate(value['production_plan'])
+        cast_package = self.cast.get(config.cast_package_id) if config.cast_package_id else None
         provider = self.provider_for(config)
         providers = {config.video_model: provider}
         with self.storage.connect() as conn:
@@ -427,6 +488,8 @@ Do not invent evidence or real-world verification; this is an AI-generated visua
             attempts = [dict(row) for row in conn.execute('SELECT * FROM video_shots WHERE production_id=? ORDER BY shot_number,version', (identifier,))]
         if submit_queued and any(item['status'] == 'needs_reconciliation' and not item['interaction_id'] for item in attempts):
             raise ValueError('Reconcile unknown submissions before submitting any queued shots')
+        serial_local = config.video_provider == 'local_cinematic' and (config.continuity_mode != 'independent' or config.duration_seconds > 240)
+        submitted_local = False
         for attempt in attempts:
             status = attempt['status']
             snapshot = None
@@ -437,31 +500,58 @@ Do not invent evidence or real-world verification; this is an AI-generated visua
                         providers[model] = self.provider_for(config,model)
                     provider = providers[model]
                 if status == 'queued' and submit_queued and (attempt_ids is None or attempt['attempt_id'] in attempt_ids):
+                    if serial_local and (submitted_local or any(item['status'] in {'submitting','processing','download_pending'} for item in attempts)):
+                        continue
                     refs = self.references.verified(config.character_reference_ids)
                     request = json.loads(attempt['request_json'])
                     parent = self.storage.attempt(attempt['parent_attempt_id']) if attempt['parent_attempt_id'] else None
                     extra = {}
                     if config.video_provider == 'local_cinematic':
                         local_cinematic_models.validate(config, request['target_duration'])
-                        image_id = config.shot_image_reference_ids.get(attempt['shot_number'], config.start_image_reference_id)
+                        image_id = config.shot_image_reference_ids.get(attempt['shot_number'], config.scene_image_reference_ids.get(attempt['scene_number'], config.start_image_reference_id))
                         image = self.references.verified([image_id])[0] if image_id else None
-                        route = local_cinematic_models.route(config.video_model, request['shot'])
+                        # Old authorizations retain their original stage selection.
+                        route = request.get('local_route') or local_cinematic_models.route(config.video_model, request['shot'])
                         character = next((ref for ref in refs if route in {'wan', 'hybrid'} and ref['character_id'] == request['shot']['character_ids'][0]), None)
+                        if character:
+                            identity=config.scene_character_reference_ids.get(attempt['scene_number'],{}).get(character['character_id'])
+                            if identity:
+                                character=self.references.verified([identity])[0]
                         driver_id = config.shot_driving_video_ids.get(attempt['shot_number'])
                         driver = self.driving.verified(driver_id) if driver_id else None
                         width, height = local_cinematic_models.dimensions(config.aspect_ratio,config.video_model)
                         files = [{'path': ref['image_path'], 'sha256': ref['sha256']} for ref in refs]
+                        if character:
+                            files.append({'path':character['image_path'],'sha256':character['sha256']})
+                        adapters = []
+                        if cast_package:
+                            from app.services.cinematic_adapter_service import CinematicAdapterService
+                            for item in cast_package.get('adapters',[]):
+                                if route in {'ltx','hybrid'} and item['character_id'] in request['shot']['character_ids']:
+                                    adapters.append(CinematicAdapterService().verified(item['adapter_id']))
+                            files += [{'path':item['path'],'sha256':item['sha256']} for item in adapters]
+                        continuation = None
+                        source_number = cinematic_continuity.previous_shot(production, request['shot'], config)
+                        if source_number:
+                            continuation = cinematic_continuity.source_dependency(self.storage, identifier, source_number)
+                            if continuation is None:
+                                continue  # Wait for the selected preceding clip; never start independently.
+                            frames = cinematic_continuity.prepare_tail(continuation, self.root / identifier / attempt['attempt_id'] / 'carry')
+                            files += [{'path': item['path'], 'sha256': item['sha256']} for item in frames]
                         if image:
                             files.append({'path': image['image_path'], 'sha256': image['sha256']})
                         if driver:
                             files.append({'path': driver['video_path'], 'sha256': driver['sha256']})
+                        member=next((actor for actor in cast_package['characters'] if character and actor['character_id']==character['character_id']),None) if cast_package else character
                         extra = {'local_inputs': {'route': route, 'duration': request['target_duration'], 'shot_number': attempt['shot_number'],
                             'seed': (config.local_seed + attempt['shot_number'] + (attempt['version']-1)*1000) % 2147483648,
                             'width': width, 'height': height, 'reference_files': files,
                             'start_image': image['image_path'] if image else None,
                             'character_image': character['image_path'] if character else None,
-                            'character_prompt': (character['description'] + '; ' + character['wardrobe']) if character else '',
+                            'character_prompt': (member['description'] + '; ' + member['wardrobe'] + '; ' + production.content_plan.scenes[attempt['scene_number']-1].visual_prompt) if member else '',
                             'driving_video': driver['video_path'] if driver else None,
+                            'continuation_frames': frames if continuation else [],
+                            'character_adapters': adapters,
                             'ltx_files': {key: str(local_cinematic_models.runtime_root() / 'models/ltx' / name) for key, name in local_cinematic_models.LTX_FILES.items()}}}
                     if config.video_provider == 'runway':
                         directory = self.root / identifier / attempt['attempt_id']
@@ -479,11 +569,19 @@ Do not invent evidence or real-world verification; this is an AI-generated visua
                         changed = conn.execute("UPDATE video_shots SET status='submitting',updated_at=? WHERE attempt_id=? AND status='queued'", (int(time.time()), attempt['attempt_id']))
                         if changed.rowcount != 1:
                             continue
+                        if config.video_provider == 'local_cinematic' and continuation:
+                            conn.execute('INSERT INTO video_continuity_dependencies VALUES (?,?,?,?,?)',
+                                (attempt['attempt_id'], *(continuation[key] for key in ('source_attempt_id','source_sha256','source_trim','source_duration'))))
                         self.storage.event(conn, identifier, 'submission_started', 'One authorized cloud request; no automatic retry', attempt['attempt_id'])
-                    snapshot = provider.submit(self.prompt(production, config, request, refs), aspect_ratio=config.aspect_ratio,
+                    prompt=self.prompt(production, config, request, refs)
+                    if config.video_provider=='local_cinematic':
+                        prompt+=' '+ ' '.join(item['trigger'] for item in adapters)
+                    snapshot = provider.submit(prompt, aspect_ratio=config.aspect_ratio,
                         references=[Path(ref['image_path']).read_bytes() for ref in refs] if attempt['operation'] == 'generate' or config.video_provider=='runway' and attempt['operation']=='edit' and attempt['model']!='aleph2' else (),
                         previous_id=parent['interaction_id'] if parent and attempt['operation'] != 'generate' and config.video_provider!='runway' else None,
                         operation=attempt['operation'], **extra)
+                    if serial_local:
+                        submitted_local = True
                 elif (status in {'processing', 'download_pending', 'needs_reconciliation', 'download_failed'}
                       or (status == 'failed' and attempt['error'] == LEGACY_FAILURE_MESSAGE)) and attempt['interaction_id']:
                     # Older failures did not retain Google's errors[] codes.
@@ -545,6 +643,13 @@ Do not invent evidence or real-world verification; this is an AI-generated visua
         failed = any(shot['status'] in {'failed','validation_failed','download_failed','needs_reconciliation','cancelled'} for shot in value['shots'] if not any(item['shot_number'] == shot['shot_number'] for item in selected))
         config = GenerationConfig.model_validate(value['configuration'])
         production = ProductionPlan.model_validate(value['production_plan'])
+        stale = cinematic_continuity.stale_dependencies(self.storage, identifier)
+        if stale:
+            with self.storage.connect() as conn:
+                conn.execute("UPDATE video_productions SET status='continuity_stale',quality_json=NULL,error=? WHERE production_id=?",
+                    ('An upstream selected clip changed. Regenerate dependent continuations in story order, or restore the original selected source before assembly.', identifier))
+            self.jobs.update_job(value['job_id'], 'awaiting_shot_selection')
+            return self.storage.get(identifier)
         unselected_candidates = any(shot['status'] == 'completed' and not shot['selected'] and shot['version'] > 1 for shot in value['shots'])
         if unselected_candidates and value['status'] not in {'clips_ready','technical_ready','pending_review'} and not outstanding:
             with self.storage.connect() as conn:
@@ -562,7 +667,10 @@ Do not invent evidence or real-world verification; this is an AI-generated visua
                 conn.execute("UPDATE video_productions SET status='assembling',updated_at=? WHERE production_id=?", (int(time.time()),identifier))
             try:
                 directory = self.root / identifier / ('assembly_' + str(uuid4()))
-                path, quality = self.renderer_factory(config).assemble(production, {item['shot_number']: item for item in selected}, directory)
+                renderer = self.renderer_factory(config)
+                if config.cast_package_id:
+                    renderer.cast_package = self.cast.get(config.cast_package_id)
+                path, quality = renderer.assemble(production, {item['shot_number']: item for item in selected}, directory)
                 manifest_path = Path(path).parent / 'manifest.json'
                 if manifest_path.is_file():
                     manifest = json.loads(manifest_path.read_text())
@@ -577,7 +685,7 @@ Do not invent evidence or real-world verification; this is an AI-generated visua
                             'native_dimensions':local_cinematic_models.dimensions(config.aspect_ratio,config.video_model),
                             'wan_native_dimensions':local_cinematic_models.dimensions(config.aspect_ratio,'wan2.2-animate-2'),
                             'wan_segment_frame_length':49,
-                            'shot_routes': {shot.shot_number:local_cinematic_models.route(config.video_model,shot.model_dump()) for shot in production.shots}}
+                            'shot_routes': {item['shot_number']:json.loads(item['request_json']).get('local_route') or local_cinematic_models.route(config.video_model,json.loads(item['request_json'])['shot']) for item in selected}}
                         manifest['performance'] = {shot['attempt_id']:json.loads(shot['usage_json'] or '{}') for shot in selected}
                         manifest['driving_references'] = [self.driving.public(self.driving.verified(key)) for key in dict.fromkeys(config.shot_driving_video_ids.values())]
                     manifest_path.write_text(json.dumps(manifest, indent=2), encoding='utf-8')
@@ -693,7 +801,7 @@ Do not invent evidence or real-world verification; this is an AI-generated visua
             shot = next(item for item in production.shots if item.shot_number == request['shot_number'])
             identifier = self.insert_shot(conn, value['production_id'], shot, quote_id, request['operation'],
                 max(item['version'] for item in candidates) + 1, parent['attempt_id'], request['instructions'], request['target_duration'], config=config,
-                metadata={key:request[key] for key in ('source','provider_model','generation_duration') if key in request}, estimate=quote['estimate_usd'])
+                metadata={key:request[key] for key in ('source','provider_model','generation_duration','local_route') if key in request}, estimate=quote['estimate_usd'])
             conn.execute("UPDATE video_productions SET status='processing',quality_json=NULL,error=NULL,updated_at=? WHERE production_id=?", (int(time.time()), value['production_id']))
             conn.execute("UPDATE jobs SET status='rendering',error=NULL WHERE job_id=?", (value['job_id'],))
             self.storage.event(conn, value['production_id'], 'shot_authorized', 'Human authorized one new candidate; original selected media preserved', identifier)
@@ -773,6 +881,8 @@ Do not invent evidence or real-world verification; this is an AI-generated visua
             if quality.get('sha256') and media_sha256(path) != quality['sha256']:
                 raise ValueError('Final video changed after validation; reassemble before review')
             selected = conn.execute('SELECT * FROM video_shots WHERE production_id=? AND selected=1', (identifier,)).fetchall()
+            if value['configuration'].get('continuity_mode','independent') != 'independent' and any(item['continuity_status'] != 'accepted' for item in selected):
+                raise ValueError('Inspect each selected shot against the cast package and confirm its actor, outfit and voice before final review')
             if len(selected) != len(value['production_plan']['shots']) or any(not Path(item['clip_path']).is_file() for item in selected):
                 raise ValueError('Required selected shot media is missing')
             for item in selected:
@@ -783,6 +893,25 @@ Do not invent evidence or real-world verification; this is an AI-generated visua
             conn.execute("UPDATE video_productions SET status='pending_review',updated_at=? WHERE production_id=?", (int(time.time()),identifier))
             conn.execute("UPDATE jobs SET status='pending_review',updated_at=? WHERE job_id=? AND status='awaiting_quality_review'", (datetime.now(timezone.utc).isoformat(),value['job_id']))
             self.storage.event(conn, identifier, 'quality_reviewed', 'Human checked selected footage, voices, caption timing, claims and rights; video still requires separate approval and publishing')
+        return self.storage.get(identifier)
+
+    def accept_continuity(self, identifier, attempt_id, confirmed):
+        value=self.editable(identifier)
+        if confirmed is not True:
+            raise ValueError('Confirm checking the actor, outfit and voice against the cast package')
+        attempt=self.storage.attempt(attempt_id)
+        if not attempt or attempt['production_id']!=identifier or attempt['status']!='completed' or not attempt['selected']:
+            raise ValueError('Choose a completed selected shot from this production')
+        if cinematic_continuity.stale_dependencies(self.storage,identifier):
+            raise ValueError('Resolve stale continuation dependencies before accepting continuity')
+        if value['configuration'].get('cast_package_id'):
+            self.cast.get(value['configuration']['cast_package_id'])
+        quality=json.loads(attempt['media_quality_json'] or '{}')
+        if not quality.get('sha256') or media_sha256(attempt['clip_path'])!=quality['sha256']:
+            raise ValueError('The shot changed after validation')
+        with self.storage.connect() as conn:
+            conn.execute("UPDATE video_shots SET continuity_status='accepted' WHERE attempt_id=? AND selected=1", (attempt_id,))
+            self.storage.event(conn,identifier,'continuity_checked','Human compared selected actor, outfit and voice against the cast package',attempt_id)
         return self.storage.get(identifier)
 
 

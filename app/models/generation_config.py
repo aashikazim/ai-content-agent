@@ -2,7 +2,7 @@
 
 import os
 from decimal import Decimal
-from typing import Literal
+from typing import Literal, Annotated
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -30,15 +30,19 @@ class GenerationConfig(BaseModel):
     video_model: str = Field(default="local-pipeline", min_length=1, max_length=200)
     video_input_mode: Literal["text", "image"] = "text"
     start_image_reference_id: UUID | None = None
-    shot_image_reference_ids: dict[int, UUID] = Field(default_factory=dict, max_length=240)
-    shot_driving_video_ids: dict[int, UUID] = Field(default_factory=dict, max_length=240)
+    shot_image_reference_ids: dict[int, UUID] = Field(default_factory=dict, max_length=600)
+    shot_driving_video_ids: dict[int, UUID] = Field(default_factory=dict, max_length=600)
+    continuity_mode: Literal['independent', 'anchored', 'connected'] = 'independent'
+    cast_package_id: UUID | None = None
+    scene_image_reference_ids: dict[int, UUID] = Field(default_factory=dict, max_length=600)
+    scene_character_reference_ids: dict[int, Annotated[dict[str, UUID], Field(max_length=3)]] = Field(default_factory=dict, max_length=600)
     local_seed: int = Field(default=42, ge=0, le=2147483647, strict=True)
     image_mode: Literal["text", "diffusion"] = "text"
     image_model: str = Field(
         default_factory=lambda: os.getenv("IMAGE_MODEL_ID", DEFAULT_IMAGE_MODEL),
         min_length=1, max_length=200,
     )
-    duration_seconds: int = Field(default=45, ge=30, le=1200, strict=True)
+    duration_seconds: int = Field(default=45, ge=30, le=1800, strict=True)
     aspect_ratio: Literal["9:16", "16:9", "1:1"] = "9:16"
     visual_style: Literal[
         "realistic", "cinematic", "2d_cartoon", "3d_animation",
@@ -46,13 +50,13 @@ class GenerationConfig(BaseModel):
     ] = "cinematic"
     resolution: Literal["720p", "1080p"] = "1080p"
     fps: Literal[24, 30] = 30
-    narration: Literal["local_tts", "model_audio"] = "local_tts"
+    narration: Literal["local_tts", "model_audio", "character_tts"] = "local_tts"
     source_mode: Literal["trends", "topic", "script"] = "trends"
     topic: str = Field(default="", max_length=1000)
     supplied_script: str = Field(default="", max_length=20000)
     character_reference_ids: list[UUID] = Field(default_factory=list, max_length=3)
     captions: Literal["scene_text", "timed"] = "scene_text"
-    max_shots: int = Field(default=12, ge=1, le=240, strict=True)
+    max_shots: int = Field(default=12, ge=1, le=600, strict=True)
     max_cost_usd: Decimal = Field(default=Decimal("10"), ge=0, le=1000)
     require_motion: bool = Field(default=False, strict=True)
     paid_generation_confirmed: bool = Field(default=False, strict=True)
@@ -66,13 +70,23 @@ class GenerationConfig(BaseModel):
 
     @model_validator(mode="after")
     def validate_reference_ids(self):
-        limit = 240 if self.content_type == 'long_drama' else 12
+        limit = (600 if self.video_provider == 'local_cinematic' else 240) if self.content_type == 'long_drama' else 12
+        if self.video_provider != 'local_cinematic' and self.duration_seconds > 1200:
+            raise ValueError('Only local cinematic supports productions longer than 1200 seconds')
+        if self.video_provider != 'local_cinematic' and (self.continuity_mode != 'independent' or self.cast_package_id or self.scene_image_reference_ids or self.scene_character_reference_ids):
+            raise ValueError('Cast packages and connected generation are local cinematic features')
+        if self.narration == 'character_tts' and (self.video_provider != 'local_cinematic' or not self.cast_package_id):
+            raise ValueError('Fixed character voices require a local cinematic cast package')
         if self.max_shots > limit or len(self.shot_image_reference_ids) > limit or len(self.shot_driving_video_ids) > limit:
             raise ValueError(f'This content type supports at most {limit} shots')
         if any(not 1 <= key <= limit for key in self.shot_image_reference_ids):
             raise ValueError(f"Shot image keys must be shot numbers 1–{limit}")
         if any(not 1 <= key <= limit for key in self.shot_driving_video_ids):
             raise ValueError(f"Driving video keys must be shot numbers 1–{limit}")
+        if any(not 1 <= key <= limit for key in self.scene_image_reference_ids):
+            raise ValueError(f'Scene image keys must be scene numbers 1–{limit}')
+        if any(not 1 <= key <= limit for key in self.scene_character_reference_ids):
+            raise ValueError(f'Scene identity keys must be scene numbers 1–{limit}')
         if self.video_provider != 'local_cinematic' and self.shot_driving_video_ids:
             raise ValueError('Driving motion inputs are available only for local cinematic models')
         if len(set(self.character_reference_ids)) != len(self.character_reference_ids):

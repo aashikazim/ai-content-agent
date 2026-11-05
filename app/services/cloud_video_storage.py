@@ -9,6 +9,19 @@ class CloudVideoStorage(GenerationStorage):
         super().initialize()
         with self.connect() as conn:
             conn.executescript('''
+                CREATE TABLE IF NOT EXISTS cinematic_cast_packages (
+                    package_id TEXT PRIMARY KEY, name TEXT NOT NULL, package_json TEXT NOT NULL,
+                    sha256 TEXT NOT NULL, created_at INTEGER NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS local_production_runs (
+                    run_id TEXT PRIMARY KEY, production_id TEXT NOT NULL,
+                    attempt_ids_json TEXT NOT NULL, status TEXT NOT NULL, heartbeat INTEGER NOT NULL,
+                    error TEXT, created_at INTEGER NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS video_continuity_dependencies (
+                    attempt_id TEXT PRIMARY KEY, source_attempt_id TEXT NOT NULL,
+                    source_sha256 TEXT NOT NULL, source_trim REAL NOT NULL, source_duration REAL NOT NULL
+                );
                 CREATE TABLE IF NOT EXISTS video_productions (
                     production_id TEXT PRIMARY KEY, job_id TEXT NOT NULL UNIQUE,
                     script_attempt_id TEXT NOT NULL, configuration_json TEXT NOT NULL,
@@ -73,19 +86,25 @@ class CloudVideoStorage(GenerationStorage):
                 return None
             shots = conn.execute('SELECT * FROM video_shots WHERE production_id = ? ORDER BY shot_number,version', (identifier,)).fetchall()
             events = conn.execute('SELECT * FROM video_generation_events WHERE production_id = ? ORDER BY event_id DESC LIMIT 100', (identifier,)).fetchall()
+            dependencies = {item['attempt_id']:dict(item) for item in conn.execute('''SELECT d.* FROM video_continuity_dependencies d
+                JOIN video_shots s ON s.attempt_id=d.attempt_id WHERE s.production_id=?''', (identifier,))}
+            run = conn.execute('SELECT run_id,status,heartbeat,error FROM local_production_runs WHERE production_id=? ORDER BY created_at DESC,rowid DESC LIMIT 1', (identifier,)).fetchone()
         value = dict(row)
         value['configuration'] = json.loads(value.pop('configuration_json'))
         value['production_plan'] = json.loads(value.pop('production_json'))
         value['quality'] = json.loads(value.pop('quality_json') or 'null')
         value['shots'] = []
+        value['local_run'] = dict(run) if run else None
         for shot in shots:
             item = dict(shot)
-            item.pop('request_json')
+            request = json.loads(item.pop('request_json'))
+            item['generation_route'] = request.get('local_route')
             item.pop('clip_path')
             item['usage'] = json.loads(item.pop('usage_json') or 'null')
             item['media_quality'] = json.loads(item.pop('media_quality_json') or 'null')
             item['selected'] = bool(item['selected'])
             item['generation_id'] = item['interaction_id']
+            item['conditioning_source'] = dependencies.get(item['attempt_id'])
             item['video_url'] = f'/api/v1/generation/videos/{identifier}/shots/{item["attempt_id"]}/video' if shot['clip_path'] else None
             value['shots'].append(item)
         value['events'] = [dict(event) for event in events]

@@ -27,7 +27,7 @@ CONTENT_TYPES = [
     {"id": "animated_comedy", "label": "Animated comedy", "status": "gemini_video", "cloud_executable": True, "phase": 4,
      "description": "Fiction/satire character designs and Gemini animated shots with human continuity checks.", "executable": False},
     {"id": "long_drama", "label": "Long drama", "status": "runway_video", "phase": 7, "cloud_executable": True,
-     "description": "2–20-minute fictional screenplay, consistent cast, up to 240 Runway shots and local assembly; human continuity inspection required.", "executable": False},
+     "description": "Fictional screenplay: 2–30 minutes / 600 shots locally, 2–20 minutes / 240 shots with Runway; shared cast and human continuity inspection required.", "executable": False},
     {"id": "news", "label": "News", "status": "unverified_gemini_illustration", "cloud_executable": True, "phase": 6,
      "description": "Unverified news drafts and AI illustrative footage; source verification remains a human responsibility.",
      "executable": False},
@@ -135,6 +135,8 @@ def get_catalog() -> dict:
              "reason": "Official Runway SDK; model-specific text/image inputs, explicit credit confirmation and no paid retries. Native resolution varies; FFmpeg assembles locally.",
              "models": catalog_models()},
             {"id": "local_cinematic", "label": "Local cinematic · LTX / Wan / hybrid",
+             "production_duration_seconds": {"min":30,"max":1800}, "max_shots":600,
+             "continuity_modes": ["independent","anchored","connected"],
              "configured": any(item['executable'] for item in local_cinematic_models.catalog_models()), "implemented": True,
              "executable": any(item['executable'] for item in local_cinematic_models.catalog_models()), "status": "runtime_check_required",
              "reason": "Isolated GPU workers; exact LTX-2.5 and Wan-Animate-2 distilled checkpoints. Setup and model access required. LTX uses a512px short edge; Wan uses384px with49-frame windows, locally upscaled. No still-image fallback. Wan needs one reference actor and driving motion; hybrid retains LTX audio.",
@@ -152,6 +154,7 @@ def get_catalog() -> dict:
         "limits": {"duration_seconds": {"min": 30, "max": 1200},
                    "execution_duration_seconds": {"min": 30, "max": 60},
                    "max_shots": 12, "long_form_max_shots": 240, "long_form_duration_seconds": {"min":120,"max":1200}, "max_character_references": 3,
+                   "local_long_form_max_shots":600, "local_long_form_duration_seconds":{"min":120,"max":1800},
                    "max_cost_usd": "1000", "topic_characters": 1000,
                    "script_characters": 20000},
     }
@@ -201,8 +204,9 @@ def validate_for_script(config: GenerationConfig) -> None:
     if config.script_provider == "anthropic" and not os.getenv("ANTHROPIC_API_KEY"):
         raise ValueError("ANTHROPIC_API_KEY is not configured; choose local Ollama or configure the key on the server")
     if config.content_type == 'long_drama':
-        if config.video_provider not in {'runway', 'local_cinematic'} or not 120 <= config.duration_seconds <= 1200:
-            raise ValueError('Long-form drama needs Runway or local cinematic and a 120–1200-second target')
+        maximum_duration = 1800 if config.video_provider == 'local_cinematic' else 1200
+        if config.video_provider not in {'runway', 'local_cinematic'} or not 120 <= config.duration_seconds <= maximum_duration:
+            raise ValueError(f'Long-form drama needs Runway or local cinematic and a 120–{maximum_duration}-second target')
         from math import ceil
         from app.services.runway_models import capabilities
         maximum = 10 if config.video_provider == 'local_cinematic' else capabilities(config)['clip_duration_seconds']['max']
