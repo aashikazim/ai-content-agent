@@ -84,3 +84,37 @@ for the foundation and have not been implemented prematurely.
 - Quota fallback is explicit when a real source sample lacks requested categories.
   No fabricated diversity or topics. Fixture provenance records remote GDELT
   recording failure and synthetic optional Reddit/contract bodies honestly.
+
+
+## Phase 4 — local planning and manual cast gate (2026-11-07)
+
+- Reuse the installed Ollama model and cinematic GPU lock, with bounded five-day
+  chunks and 16K context; no paid model, new dependency or scheduler.
+- Keep bible immutable/hash-bound; compile structural metadata but never fabricate
+  creative hooks. Record validator feedback, retry only acknowledged invalid output
+  at most twice, and hold uncertain completion for inspection.
+- Use 300–600s episode targets per the newer owner request, superseding the original
+  specification's 180–300s example. Phase4 plans, not renders, these episodes.
+- Require manual cast approval even if legacy config permits series_start_mode=auto.
+  Owner's explicit human gate takes precedence. Approval never authorizes publishing.
+- Whole-outline optimistic edits permit coordinated hook changes while preserving
+  episode uniqueness; any produced episode locks outline editing. Future episode
+  memory/state and publishing order are Phase5 work.
+
+- Real qwen3:8b tests exposed copy-forward hooks and invented reference IDs despite
+  error feedback. Constrain known per-day IDs/ledger/finale in the output schema;
+  retain deterministic whole-outline checks for duplicates and continuity. The
+  installed Ollama rejected prefixItems tuples with HTTP400, so use five named
+  day fields on the wire and decode to the existing ordered episode list. Record
+  known rejections separately from transport uncertainty, and unload loaded weights.
+
+- Runtime validation exposed weak recaps despite stored previous-hook IDs. Compile
+  an explicit literal recap from the prior model-written hook and validate its
+  presence. This guarantees acknowledgment without claiming semantic story QA.
+- Separate structure/ledger and hook-specialist agents, at most3 received outputs
+  each (max6 per chunk). Explicit known-failure revisions copy a verified bible
+  and accepted prefix atomically; uncertain requests cannot use this path. Original
+  rows remain intact; replay returns saved intent even if source state later changes.
+- Story-only sampling .9/repeat_penalty1.2 and concise repairs avoid copy-forward
+  loops; Shorts defaults remain unchanged. Retain every failed iteration and do
+  not advertise this as a first-attempt successful local run.

@@ -2,10 +2,34 @@
 
 ## CURRENT RESUME STATE
 
-Phase 2 committed **7f0c1d9**. Phase 3 complete; all five private pilot outputs
-passed technical checks and await human quality review. No approval or publishing.
-Phase 3 commit pending, then implement Phase 4, run one local 30-episode planning
-request, commit Phase 4 and stop. Never relaunch the completed pilot.
+Phase 2 committed **7f0c1d9**; Phase 3 committed **69945a4**.
+**Phase 4 complete and verified. STOP after this milestone's authorized main commit.**
+No Phase 5 work is authorized or started. No further real inference needed.
+
+Final verification: **738 Python tests passed in607.10s**, zero failures/skips,
+log `/tmp/automation-phase4-postfreeze.log`, exit0. **75 frontend tests passed in
+3.43s**,11 files; production build1.53s. Original baseline623/66. Final targeted
+all-automation115passed23.29s. Compilation and git whitespace checks passed.
+No dependencies installed; no credential/.env edits, paid calls, live DB upgrades,
+service/scheduler activation, cast/content approval or publishing.
+
+Real five-Short batch: all technically passed, awaiting_quality_review; individual
+LTX times721.33/579.79/598.33/558.88/465.34s. Replay created no duplicate jobs.
+These private outputs need human quality confirmation before content Review.
+
+Real final story **Tidal Echoes**, series8019aa1a-4ad6-5628-90c1-9866a7a691ad:
+30 planned450s episodes, awaiting_cast, full validators[]. Final artifact
+`data/automation/validation/series-20261107/final-outline.json`; proof
+final-verification.json. See SERIES_VALIDATION.md for all30 hooks and retained
+engineering failures/repairs. Frozen bible unchanged; initial inherited15-day
+prefix verified identical before explicit draft edits. Replay of final request/
+process leaves rows/IDs/receipts/events/intents unchanged. Do not relaunch any
+validation script or reset claims. Final revision137.28s + editorial request8.81s;
+no episode video or CUDA-kernel timing claim.
+
+Next step requires owner authorization for Phase5. Human cast-package creation/
+approval is still pending by design. Find the Phase4 commit by title
+`feat: add local series planning and manual cast approval` in Git history.
 
 Historical phase checkpoints follow; later entries supersede older STOP/pending notes.
 
@@ -438,3 +462,236 @@ Shorts tests **10 passed in 14.85s** (real HTTP/Ollama/submit forbidden); combin
 automation/release targeted **88 passed in 18.18s**. Latest frontend **70 passed**,
 production build **690ms**, versus original66. No dependencies installed.
 Phase 4 is next; episode rendering/lifecycle, Governor and scheduling remain deferred.
+
+## Phase 4 implementation checkpoint — before local inference
+
+- New app/automation/series models, validators, durable service and read-only reads.
+- Frozen hashed bible, three premises with past-series dedupe, six five-episode
+  chunks, max three acknowledged received-output attempts per stage. Uncertain
+  completion stops; execution claims are never reclaimed automatically.
+- Additive tables automation_series_requests and automation_series_receipts.
+- Existing queue dispatch extended; new session/CSRF series APIs; React Automation
+  series page, 30-hook grid, full-outline validated CAS edits and explicit cast gate.
+- Cast IDs/name/appearance/wardrobe/voice must match approved immutable references;
+  activation never creates jobs, auto-approves content or publishes. Even configured
+  series_start_mode=auto cannot bypass the owner's explicit manual-cast requirement.
+- Targeted Python: **88 passed in 16.28s** (series/foundation/Shorts combined).
+  Initial fake hooks accidentally repeated; fixture corrected, gate retained.
+- Frontend: **73 passed**, production build **652ms**. No dependencies added.
+- Real request started once, existing qwen3:8b with 16K context, shared GPU lock and
+  explicit unload acknowledgment. Recorded feedback will be reported honestly.
+
+### Real local planning recovery checkpoint
+
+Initial series `7fc930dd-992a-5d8e-9f69-259d073b620c` ended known-failed after
+three received bible drafts repeated an actor introduction/removal contradiction
+(elira_morgan introduced5, removed_after3). Wall99.54s. Its receipts and result.json
+are retained. No uncertainty or automatic fourth attempt.
+
+Engineering correction: precise actor/date validator feedback, final feedback
+instruction placed after the invalid candidate, and explicit two full-series
+recurring actors in the bible prompt. Failed/incomplete planning requests are not
+past produced series for premise dedupe. One explicit validation revision started,
+series `aebac48c-1722-5e6e-b01b-1764af08c2bd`, execution29076, log
+`/tmp/automation-phase4-revision.log`. Marker revision-1.json in the same private
+root. DO NOT rerun the launcher. Inspect receipts; final revision output will be
+revision-1-result.json. Initial pre-import launch had a SQL quoting syntax error,
+fixed/compiled before any model call; no request was made by that failed launch.
+
+Additional series tampering/actor/feedback tests: **29 passed in 3.47s**.
+Migration copy phase4-schema-20261107:16 automation tables, three initializations,
+all40 original tables/1762 rows/schema preserved, integrity ok, source read-only.
+Full regression active in execution3196, log /tmp/automation-phase4-full.log.
+
+### Structured-output compatibility checkpoint
+
+Revision1 `aebac48c-1722-5e6e-b01b-1764af08c2bd` acknowledged/failed at outline1
+in139.08s: wrong actor IDs, early/missing thread advances and unresolved-hook flags.
+Three attempts exhausted; retained, not automatically retried.
+
+Revision2 `8c7e1ef7-5583-5886-addd-25e08091f333` hit installed Ollama's tuple
+schema incompatibility. Initially held needs_reconciliation. Read-only local
+journal confirmed **HTTP400 at2026-11-07T01:12:40-05:00** before output. Explicit
+engineering reconciliation is saved in schema-reconciliation.json and event log;
+request/receipt marked failed/rejected, never resubmitted under the old ID.
+
+Named day fields now carry per-day JSON decoder constraints (known actor/location
+IDs, actor lifecycle, ledger planting/payoff and unresolved/finale flags), alongside
+the deterministic validators. No creative text fabricated or validation bypassed.
+Acknowledged400/422 rejections now fail clearly without retries and unload weights;
+transport/unload uncertainty still holds. Shared tests **46 passed in19.26s**.
+
+A new explicit compatibility validation revision is running (revision-3.json,
+log /tmp/automation-phase4-revision3.log). This is one final-outline validation
+project with retained failed engineering attempts; do not claim first-attempt success
+or hide the extra local requests. No paid providers, rendering or publishing.
+
+### Current local evidence
+
+Named-day revision series **a5000b86-0284-5d3d-8733-90cecc16cd99** is progressing.
+Premises/bible passed first attempt. Days1–5 passed; days6–10 initially repeated
+five earlier hooks, deterministic duplicate checks rejected them, second attempt
+passed. Stage outline11 active at this checkpoint. Exact live state is in private
+validation.db; await revision-3-result.json. Frontend final **74 passed**, build1.49s;
+final shared series/Shorts tests **46 passed in19.26s**. No publishing/episode renders.
+
+### Hook-specific repair checkpoint
+
+Named-day revision a5000b86-0284-5d3d-8733-90cecc16cd99 stopped known-failed
+at outline16 after repeated days19–20 hooks; wall326.75s. First15 completed outlines
+and every invalid receipt remain intact. No acceptance gate weakened.
+
+Added a narrow hook-only repair when all failures are duplicate/generic endings:
+keep goals/conflicts/reveals/cast/ledger unchanged, ask only for the rejected day
+strings and provide ALL banned earlier/current endings. Still at most three total
+acknowledged outputs per stage; no fourth automatic attempt. Model-generated
+repairs merge into the received candidate and the whole prefix is revalidated.
+Unit/integration series tests **38 passed in6.08s**.
+
+One explicit engineering validation revision4 is being launched with the corrected
+repair behavior (revision-4.json, /tmp/automation-phase4-revision4.log). Do not rerun
+its launcher. Earlier iterations remain as honest failure evidence, not lost work.
+
+### Resumable known-failure revision and bounded specialist agents
+
+Revision4 127ddba8-99b6-5504-919e-2539c3d00870 again stopped known-failed at
+outline16 with a single repeated hook after three outputs. Existing bible and
+first15 accepted days were preserved. Structure and hook repair are now separate
+bounded local agents: max3 structural drafts and, if needed, max3 hook-only
+repairs per chunk (max6 total, never unbounded; uncertainty stops immediately).
+
+An explicit `source_series_id` revision creates a NEW idempotent request/record,
+atomically copies a verified bible/prefix and queues only the remainder. Requires
+same actor, known-failed source, unproduced valid prefix and explicit consent;
+uncertain sources are rejected. Original rows and receipts remain intact. React
+exposes this only with local-planning authorization. No cast approval inherited.
+
+Revision5 reused15 days, confirmed exact prefix equality and bible hash before
+local inference. Current ID/log above. New tests:40 series passed9.00s;
+frontend75passed/build1.53s. Full732passed709.90s before these final new cases;
+release full regression starts after final backend freeze. No new dependencies.
+
+### Story repetition-control evidence
+
+Revision5 stopped known-failed at hooks16 in72.75s; first15 reused intact.
+Repair output exposed copying from the old hook embedded in positive context and
+500-character paragraphs. Fixed repair context to use goal/conflict/reveal only,
+request one10–25-word sentence (max180chars), and give only story planning higher
+sampling diversity/repetition penalty (.9/1.2). Existing Shorts .5/default penalty
+unchanged and tested.51 combined series/Shorts tests passed22.34s.
+
+Explicit known-failure revision6 reuses the same15-day prefix/bible; days16–20 now
+pass FIRST draft with no hook repair. Active exact state above. Earlier failed/
+rejected requests remain retained; do not claim a single-attempt successful run.
+
+### Full real outline and editorial validation
+
+Real local final series8019aa1a-4ad6-5628-90c1-9866a7a691ad completed30 days,
+awaiting_cast, zero automatic approvals. Revision6 wall137.28s after reusing15 days;
+remaining15 structural drafts passed first attempt, one hooks21 repair succeeded.
+Original result in revision-6-result.json. Replay snapshot initially proved no new
+rows/IDs/receipts/intents. Editorial inspection found a truncated day15 and weak
+day20 ending that structural checks missed. One extra local editorial request
+(8.81s) generated shorter hooks; saved via the real validated edit method.
+
+Recap continuity strengthened: compiler uses a literal Previous hook recap for
+all episodes2–30, validator rejects unrelated openings; original model creative
+text is reused without inventing events. Applied to private final-outline.json
+through the edit method; no cast approval, rendering or publishing. Previous
+snapshots and raw editorial response retained. Immutable request replay now returns
+saved output before reevaluating changed source dependencies (test added to the
+existing revision test). This also preserves acknowledgments across later source
+state changes. No backend changes planned after this checkpoint.
+
+Full736passed660.48s before final sampling/recap/replay changes. Final all-automation
+tests pending in /tmp/automation-phase4-automation-release.log; then one complete
+post-freeze738-test run will verify the final source. Earlier partial-source proof
+remains historical; final report must use final-outline.json after editorial edits.
+
+### Final private replay and migration proof
+
+After editorial hook/recap edits, all30 deterministic validators pass again.
+Same request/process replay leaves all series/episode/receipt/queue/event rows
+unchanged; bible hash identical. Before editorial edits the inherited15-day prefix
+was byte-identical. Current proof distinguishes that historical clone guarantee
+from subsequent explicit draft edits. final-verification.json records literal
+recaps, validators[], seven retained request versions and75 episode rows (intentional
+revision copies, only one full final30-day outline). No duplicate on replay.
+
+Final migrationcopy phase4-schema-final-20261107:16 automation tables across three
+initializations, all40 oldtables/1762 rows/schema preserved, integrity ok. Live
+source opened read-only and never upgraded. Backend frozen; final full test running.
+
+## Phase 4 end-of-phase report — complete
+
+Built: local premise/bible/30-day planning agents, named-day structured decoding,
+bounded structural and hook feedback loops, explicit known-failure revisions,
+immutable bible/cast binding, literal previous-hook recaps, validated optimistic
+outline edits, durable generation-only dispatch, session/CSRF API and React grid.
+
+Changed files (Phase4 only):
+
+- `app/automation/series/{__init__,models,validators,repairs,service}.py`
+- `app/automation/{schema,local_planner,shorts_service}.py`
+- `app/api/automation_routes.py`
+- `frontend/src/{Automation,AutomationSeries,AutomationSeries.test}.jsx`
+- `tests/test_automation_series.py`
+- `README.md`, `docs/automation/{ARCHITECTURE,DECISIONS,PROGRESS,SERIES,SERIES_VALIDATION}.md`
+
+No dependencies installed or downloaded. No new environment variables needed;
+existing OLLAMA_MODEL (or `story_series.planner.model`) selects the installed local
+model. `.env` and credentials untouched; no live database migration or uploads.
+All automated API/provider/neural paths mocked; actual local validation is reported
+separately, with every failed iteration retained. No GPU video result claimed for
+Phase4. Actual five-Short LTX measurements belong to the Phase3 table above.
+
+Try the feature in the existing React Studio: **Automation → Series planning**,
+authorize local planning, inspect the hook grid and saved validator feedback.
+For known failure, inspect the saved output then explicitly revise the remaining
+outline. In Local Studio create an inspected cast matching the displayed frozen
+IDs/name/appearance/wardrobe/voice, refresh packages and approve it explicitly.
+Activation does not create episodes, approve content or publish.
+
+Verification commands:
+
+```bash
+.venv/bin/python -m pytest tests/test_automation_series.py -q
+.venv/bin/python -m pytest tests/ -q
+npm --prefix frontend test
+npm --prefix frontend run build
+```
+
+Final real evidence: **Tidal Echoes**, series8019aa1a-4ad6-5628-90c1-9866a7a691ad,
+30 planned450s episodes; model-written hook table and all failure/repair evidence
+in SERIES_VALIDATION.md. Final local revision137.28s after reusing15 days, separate
+editorial request8.81s; no CUDA-kernel profiling or episode rendering claim. Full
+validators[], literal recaps verified, frozen bible unchanged, replay no duplicates,
+awaiting_cast. Seven retained engineering request versions are intentional history.
+
+Deferred: semantic/acting quality certification, actual cast images/approval,
+episode scripts/memory/rendering/lifecycle (Phase5), Governor/publishing/scheduling
+(Phase6), operations/soak/stretch (Phase7). No Phase5 work started. The five private
+Shorts still need human quality confirmation before entering content Review; no
+automatic human confirmations were fabricated to satisfy a queue label.
+
+Suggested milestone commit: `feat: add local series planning and manual cast approval`.
+The owner authorized committing this milestone on main; no push is authorized.
+Final verification results follow; the milestone commit is identified by title in Git history.
+
+
+### Final post-freeze regression — completed 2026-11-07
+
+- `.venv/bin/python -m pytest tests/ -q`: **738 passed in607.10s (10:07)**,
+  zero failures/skips, execution51008 exit0, /tmp/automation-phase4-postfreeze.log.
+- `npm --prefix frontend test`: **75 passed**,11 files, **3.43s**.
+- `npm --prefix frontend run build`: passed **1.53s**.
+- Targeted all-automation **115 passed in23.29s**; includes42 series cases,
+  adversarial outlines, literal recaps, bounded JSON/hook repairs, frozen
+  sampling defaults, revision ownership/replay, cast gating and optimistic edits.
+- Baseline623 Python/66frontend → final738/75; **+115 Python, +9 frontend**.
+  No unrelated regression or baseline failure was hidden or repaired.
+- Compilation, whitespace checks and final16-table migration-copy proof passed;
+  all40 oldtables/1762 rows/schema retained, integrity ok, source opened read-only.
+- Exact local reality and limits are in the end-of-phase report and
+  SERIES_VALIDATION.md. Backend frozen after final fixes; no need to rerun models.
+- Owner-authorized milestone commit to main, no push. **STOP. Phase5 not started.**

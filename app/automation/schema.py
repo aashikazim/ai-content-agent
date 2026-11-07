@@ -125,3 +125,20 @@ SCHEMA_STATEMENTS += (
         PRIMARY KEY(daily_plan_id,attempt_no,receipt_no))""",
 )
 AUTOMATION_TABLES |= frozenset({'automation_short_receipts'})
+
+# Phase 4: one durable planning intent and received local-model responses.
+SCHEMA_STATEMENTS += (
+    """CREATE TABLE IF NOT EXISTS automation_series_requests (
+        series_id TEXT PRIMARY KEY REFERENCES series(series_id), request_id TEXT NOT NULL UNIQUE,
+        request_json TEXT NOT NULL CHECK(json_valid(request_json)), actor TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'queued', stage TEXT NOT NULL DEFAULT 'premises',
+        error TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)""",
+    """CREATE TABLE IF NOT EXISTS automation_series_receipts (
+        series_id TEXT NOT NULL REFERENCES series(series_id), stage TEXT NOT NULL,
+        attempt_no INTEGER NOT NULL CHECK(attempt_no BETWEEN 1 AND 3), status TEXT NOT NULL,
+        body_json TEXT CHECK(body_json IS NULL OR json_valid(body_json)),
+        errors_json TEXT NOT NULL DEFAULT '[]' CHECK(json_valid(errors_json)),
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+        PRIMARY KEY(series_id,stage,attempt_no))""",
+)
+AUTOMATION_TABLES |= frozenset({'automation_series_requests','automation_series_receipts'})

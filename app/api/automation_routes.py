@@ -61,3 +61,57 @@ def daily_report(day:date):
 def lanes():
     settings=load_settings()
     return {'enabled':settings.enabled,'timezone':settings.config.timezone,'lanes':{k:v.model_dump(mode='json') for k,v in settings.config.lanes.items()}}
+
+
+from uuid import UUID
+from app.automation.series.service import SeriesService,read_series
+from app.automation.series.models import Episode
+from app.automation.storage import IdempotencyConflict
+
+class SeriesRequest(BaseModel):
+    model_config=ConfigDict(extra='forbid')
+    request_id:UUID
+    source_series_id:UUID | None=None
+    genre:str=Field(default='mystery drama',min_length=2,max_length=100)
+    premise:str=Field(default='',max_length=2000)
+    lane:str=Field(default='story_series',pattern='^[a-z][a-z0-9_]{0,63}$')
+    confirmed:bool=Field(default=False,strict=True)
+
+class OutlineEdit(BaseModel):
+    model_config=ConfigDict(extra='forbid')
+    expected_updated_at:str=Field(max_length=50)
+    episodes:list[Episode]=Field(min_length=30,max_length=30)
+
+class CastApproval(BaseModel):
+    model_config=ConfigDict(extra='forbid')
+    package_id:UUID
+    expected_updated_at:str=Field(max_length=50)
+    confirmed:bool=Field(default=False,strict=True)
+    start_date:date | None=None
+
+def series_action(action):
+    try:return action()
+    except IdempotencyConflict as exc:raise HTTPException(409,str(exc)) from None
+    except ValueError as exc:raise HTTPException(422,str(exc)) from None
+
+@router.get('/series')
+def list_series():
+    return {'series':read_series(os.getenv('DATABASE_PATH','data/trends.db'))}
+
+@router.post('/series',status_code=202)
+def create_series(body:SeriesRequest,principal=Depends(require_session)):
+    return series_action(lambda:SeriesService(os.getenv('DATABASE_PATH','data/trends.db')).enqueue(str(body.request_id),genre=body.genre,premise=body.premise,lane=body.lane,actor=principal['username'],confirmed=body.confirmed,launch=True,source_series_id=str(body.source_series_id) if body.source_series_id else None))
+
+@router.get('/series/{identifier}')
+def series_detail(identifier:UUID):
+    value=read_series(os.getenv('DATABASE_PATH','data/trends.db'),str(identifier))
+    if not value:raise HTTPException(404,'Series not found')
+    return value
+
+@router.put('/series/{identifier}/outline')
+def edit_series(identifier:UUID,body:OutlineEdit):
+    return series_action(lambda:SeriesService(os.getenv('DATABASE_PATH','data/trends.db')).edit(str(identifier),[e.model_dump() for e in body.episodes],body.expected_updated_at))
+
+@router.post('/series/{identifier}/approve-cast')
+def approve_series_cast(identifier:UUID,body:CastApproval,principal=Depends(require_session)):
+    return series_action(lambda:SeriesService(os.getenv('DATABASE_PATH','data/trends.db')).approve_cast(str(identifier),str(body.package_id),body.expected_updated_at,confirmed=body.confirmed,actor=principal['username'],start_date=body.start_date))

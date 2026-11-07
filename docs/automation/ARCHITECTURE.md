@@ -170,3 +170,22 @@ The Automation page reuses existing components/styles and human quality controls
 Technical output waits at awaiting_quality_review; no automatic human confirmations,
 approval or publication. Director run_day requires enabled configuration and an
 explicit generation producer. Scheduler and Governor wiring remain Phase 6 work.
+
+
+## Phase 4 planning update
+
+SeriesService creates one actor-bound UUID intent in the existing durable queue.
+A worker uses the shared LocalJSONPlanner (no cloud provider), persists submitting
+and received receipts, validates premises/bible and six ordered five-day chunks,
+then leaves the series awaiting_cast. New private receipt/request tables are
+additive to the existing series/series_episodes entities. No episode jobs are made.
+
+The React Automation series view reads durable status, shows 30 hooks, supports
+full-outline validated optimistic edits, and explicitly binds an existing verified
+cast package. Bible hash and actor IDs/name/appearance/wardrobe/voice must match;
+a human-confirmed session/CSRF request alone can activate it. No auto-cast escape
+hatch exists. One active series per lane; episode production locks editing.
+
+Deterministic validation enforces structural continuity and thread timing; semantic
+story quality still requires human inspection. No LLM judge or video performance
+claim is made. See SERIES.md and PROGRESS.md for operations and measured evidence.

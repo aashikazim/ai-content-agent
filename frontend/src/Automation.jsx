@@ -1,8 +1,10 @@
 import React,{useCallback,useEffect,useRef,useState} from 'react';
 import CloudProduction from './CloudProduction.jsx';
+import AutomationSeries from './AutomationSeries.jsx';
 import './GenerationForm.css';
 
 export default function Automation({request,onNavigate}) {
+ const [showSeries,setShowSeries]=useState(false);
  const editedDay=useRef(false);
  const [day,setDay]=useState(new Intl.DateTimeFormat('en-CA',{timeZone:'America/New_York'}).format(new Date()));
  const [metadata,setMetadata]=useState(null),[plan,setPlan]=useState(null),[preview,setPreview]=useState(null),[report,setReport]=useState('');
@@ -16,8 +18,9 @@ export default function Automation({request,onNavigate}) {
  useEffect(()=>setConfirmed(false),[day]);
  async function act(fn){setBusy(true);setError('');try{await fn();}catch(e){setError(e.message);}finally{setBusy(false);}}
  const forecast=plan?.run?.forecast;
+ if(showSeries)return <section className="generation-workspace"><button className="button subtle" onClick={()=>setShowSeries(false)}>Back to daily Shorts</button><AutomationSeries request={request}/></section>;
  return <section className="generation-workspace"><div className="generation-section">
-  <div className="generation-section-heading"><div><h2>Daily production</h2><p>Local generation, durable plans and human quality review.</p></div></div>
+  <div className="generation-section-heading"><div><h2>Daily production</h2><button className="button subtle" onClick={()=>setShowSeries(true)}>Series planning</button><p>Local generation, durable plans and human quality review.</p></div></div>
   {error&&<div className="notice notice-error" role="alert">{error}</div>}
   {metadata&&!metadata.enabled&&<p className="notice">Automation is disabled. Preview remains available. Enable AUTOMATION_ENABLED locally before requesting production.</p>}
   <div className="generation-grid"><label className="generation-field">Plan date<input type="date" value={day} onChange={e=>{editedDay.current=true;setDay(e.target.value);}}/></label></div>
