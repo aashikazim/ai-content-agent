@@ -18,7 +18,7 @@ export default function Automation({request,onNavigate}) {
  useEffect(()=>setConfirmed(false),[day]);
  async function act(fn){setBusy(true);setError('');try{await fn();}catch(e){setError(e.message);}finally{setBusy(false);}}
  const forecast=plan?.run?.forecast;
- if(showSeries)return <section className="generation-workspace"><button className="button subtle" onClick={()=>setShowSeries(false)}>Back to daily Shorts</button><AutomationSeries request={request}/></section>;
+ if(showSeries)return <section className="generation-workspace"><button className="button subtle" onClick={()=>setShowSeries(false)}>Back to daily Shorts</button><AutomationSeries request={request} onNavigate={onNavigate}/></section>;
  return <section className="generation-workspace"><div className="generation-section">
   <div className="generation-section-heading"><div><h2>Daily production</h2><button className="button subtle" onClick={()=>setShowSeries(true)}>Series planning</button><p>Local generation, durable plans and human quality review.</p></div></div>
   {error&&<div className="notice notice-error" role="alert">{error}</div>}

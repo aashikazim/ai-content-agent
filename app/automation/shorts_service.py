@@ -235,4 +235,7 @@ def dispatch_automation(target: str) -> None:
     if target.startswith('series:'):
         from app.automation.series.service import SeriesService
         SeriesService(os.getenv('DATABASE_PATH','data/trends.db')).process(target.split(':',1)[1]);return
+    if target.startswith('episode:'):
+        from app.automation.series.episodes import EpisodeService
+        EpisodeService(os.getenv('DATABASE_PATH','data/trends.db')).process(target.split(':',1)[1]);return
     raise ValueError('Unknown automation generation task')

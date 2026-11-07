@@ -115,3 +115,62 @@ def edit_series(identifier:UUID,body:OutlineEdit):
 @router.post('/series/{identifier}/approve-cast')
 def approve_series_cast(identifier:UUID,body:CastApproval,principal=Depends(require_session)):
     return series_action(lambda:SeriesService(os.getenv('DATABASE_PATH','data/trends.db')).approve_cast(str(identifier),str(body.package_id),body.expected_updated_at,confirmed=body.confirmed,actor=principal['username'],start_date=body.start_date))
+
+
+class EpisodeRunRequest(BaseModel):
+    model_config=ConfigDict(extra='forbid')
+    confirmed:bool=Field(default=False,strict=True)
+    validation_duration:int | None=Field(default=None,ge=180,le=240)
+
+class EpisodeSkipRequest(BaseModel):
+    model_config=ConfigDict(extra='forbid')
+    confirmed:bool=Field(default=False,strict=True)
+    notes:str=Field(min_length=10,max_length=1000)
+
+@router.get('/series/{identifier}/episodes')
+def episode_history(identifier:UUID):
+    path=__import__('pathlib').Path(os.getenv('DATABASE_PATH','data/trends.db')).absolute()
+    import sqlite3,json
+    if not path.exists():return {'episodes':[]}
+    with sqlite3.connect(path.as_uri()+'?mode=ro',uri=True) as c:
+        c.row_factory=sqlite3.Row
+        if not c.execute("SELECT 1 FROM sqlite_master WHERE name='series_episodes'").fetchone():return {'episodes':[]}
+        has_runs=c.execute("SELECT 1 FROM sqlite_master WHERE name='automation_episode_runs'").fetchone()
+        has_jobs=c.execute("SELECT 1 FROM sqlite_master WHERE name='jobs'").fetchone()
+        fields='e.*'+(',r.production_id,r.status AS production_status,r.error AS production_error,r.run_id,r.validation_only' if has_runs else '')+(',j.status AS job_status' if has_jobs else '')
+        sql='SELECT '+fields+' FROM series_episodes e'+(' LEFT JOIN automation_episode_runs r ON r.series_id=e.series_id AND r.ep_no=e.ep_no' if has_runs else '')+(' LEFT JOIN jobs j ON j.job_id=e.job_id' if has_jobs else '')+' WHERE e.series_id=? ORDER BY e.ep_no'
+        return {'episodes':[dict(r) for r in c.execute(sql,(str(identifier),))]}
+
+@router.post('/series/{identifier}/episodes/{number}/run',status_code=202)
+def run_episode(identifier:UUID,number:int,body:EpisodeRunRequest,principal=Depends(require_session)):
+    from app.automation.series.episodes import EpisodeService
+    return series_action(lambda:EpisodeService(os.getenv('DATABASE_PATH','data/trends.db')).enqueue(str(identifier),number,actor=principal['username'],confirmed=body.confirmed,launch=True,validation_duration=body.validation_duration))
+
+@router.post('/series/{identifier}/episodes/{number}/skip')
+def skip_episode(identifier:UUID,number:int,body:EpisodeSkipRequest,principal=Depends(require_session)):
+    from app.automation.series.episodes import EpisodeService
+    def action():
+        EpisodeService(os.getenv('DATABASE_PATH','data/trends.db')).skip(str(identifier),number,principal['username'],body.notes,body.confirmed)
+        return {'status':'skipped'}
+    return series_action(action)
+
+@router.post('/series-tick')
+def series_tick(body:EpisodeRunRequest):
+    from app.automation.series.episodes import EpisodeService
+    if not body.confirmed:raise HTTPException(422,'Confirm local buffer generation')
+    return series_action(lambda:EpisodeService(os.getenv('DATABASE_PATH','data/trends.db')).tick(launch=True))
+
+@router.get('/episode-runs/{identifier}')
+def episode_run_detail(identifier:UUID):
+    import sqlite3,json
+    from pathlib import Path
+    path=Path(os.getenv('DATABASE_PATH','data/trends.db')).absolute()
+    if not path.exists():raise HTTPException(404,'Episode run not found')
+    with sqlite3.connect(path.as_uri()+'?mode=ro',uri=True) as c:
+        c.row_factory=sqlite3.Row
+        if not c.execute("SELECT 1 FROM sqlite_master WHERE name='automation_episode_runs'").fetchone():raise HTTPException(404,'Episode run not found')
+        row=c.execute('SELECT * FROM automation_episode_runs WHERE run_id=?',(str(identifier),)).fetchone()
+        if not row:raise HTTPException(404,'Episode run not found')
+        result=dict(row);result['request']=json.loads(result.pop('request_json'));result['memory']=json.loads(result.pop('memory_json'))
+        result['receipts']=[dict(r) for r in c.execute('SELECT stage,attempt_no,status,errors_json FROM automation_episode_receipts WHERE run_id=? ORDER BY rowid',(str(identifier),))]
+        return result

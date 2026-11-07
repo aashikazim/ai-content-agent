@@ -2,34 +2,52 @@
 
 ## CURRENT RESUME STATE
 
-Phase 2 committed **7f0c1d9**; Phase 3 committed **69945a4**.
-**Phase 4 complete and verified. STOP after this milestone's authorized main commit.**
-No Phase 5 work is authorized or started. No further real inference needed.
+Owner authorized Phases5–7 (2026-11-07), commits after each phase, no uploads or
+stretch work. Main HEAD75745c5; clean initial tree. Exact same source as last
+verified baseline738 Python607.10s /75 frontend3.43s/build1.53s; no claim of a new
+baseline run. Earlier full logs remain evidence. Existing handoff files untouched.
 
-Final verification: **738 Python tests passed in607.10s**, zero failures/skips,
-log `/tmp/automation-phase4-postfreeze.log`, exit0. **75 frontend tests passed in
-3.43s**,11 files; production build1.53s. Original baseline623/66. Final targeted
-all-automation115passed23.29s. Compilation and git whitespace checks passed.
-No dependencies installed; no credential/.env edits, paid calls, live DB upgrades,
-service/scheduler activation, cast/content approval or publishing.
+Phase5 WIP, uncommitted. Owner approved ALL SIX generated cast reference images
+and selected Tidal Echoes for the private240s episode. MainDB now has three newly
+owner-approved packages (backed up first):
+- Tidal Echoes:6cf9b34d-ffcb-4751-bbcb-6a9c5c13fe7b
+- Everyday Comedy:8ddfc36e-9760-4c38-aab1-7c78a278d00b
+- Coastal Adventure:ccddbef1-3abd-4186-813c-8541a5fb49ad
+Images/provenance/approval record:
+`data/automation/validation/cast-options-20261107/registered-packages.json`.
+No human approval of finished videos has been given.
 
-Real five-Short batch: all technically passed, awaiting_quality_review; individual
-LTX times721.33/579.79/598.33/558.88/465.34s. Replay created no duplicate jobs.
-These private outputs need human quality confirmation before content Review.
+**Real corrected episode COMPLETE**, private root
+`data/automation/validation/episode-20261107-v2`, DB `validation/episode.db`.
+Run774fc942-fb20-50e8-b922-f50e6d69ca40, production84adf95f-d492-42ed-bbf1-45449f1f52e4,
+jobb512edc1-2f34-437e-aaa7-85c736901f42. DO NOT RELAUNCH/RESET CLAIMS.
+24/24 shots,240.086s,H2641280x720/24fps,AAC. Measured LTX stage4828.8s,
+render wall5248.59s; measurement stored privately. Replay changed no production,
+job,script,shot,run or measurement rows. All technical checks passed. Finished
+video remains awaiting_quality_review; owner continuity/captions/rights acceptance
+is pending. No approval/publication was fabricated. Exact MP4/hash and last30s:
+[EPISODE_VALIDATION.md](EPISODE_VALIDATION.md). verification.json stores evidence.
 
-Real final story **Tidal Echoes**, series8019aa1a-4ad6-5628-90c1-9866a7a691ad:
-30 planned450s episodes, awaiting_cast, full validators[]. Final artifact
-`data/automation/validation/series-20261107/final-outline.json`; proof
-final-verification.json. See SERIES_VALIDATION.md for all30 hooks and retained
-engineering failures/repairs. Frozen bible unchanged; initial inherited15-day
-prefix verified identical before explicit draft edits. Replay of final request/
-process leaves rows/IDs/receipts/events/intents unchanged. Do not relaunch any
-validation script or reset claims. Final revision137.28s + editorial request8.81s;
-no episode video or CUDA-kernel timing claim.
+Initial probe preserved2 completed shots after detecting portrait center-cropping;
+22 NEVER-submitted reservations were cancelled. Corrected run reused the actual
+completed screenplay/state and original cast images with geometry-only landscape
+scene references. Blurred side-fill remains visible. This is not artistic QA.
+Known probe/recovery evidence remains under the private validation roots.
 
-Next step requires owner authorization for Phase5. Human cast-package creation/
-approval is still pending by design. Find the Phase4 commit by title
-`feat: add local series planning and manual cast approval` in Git history.
+Latest automation tests134passed80.41s; frontend77passed2.31s/build646ms.
+Final full Python regression: **757 passed in688.12s**, log
+`/tmp/automation-phase5-final-python.log`, frozen Phase5 backend. Compared with
+Phase4:738passed607.10s, +19 tests, zero regressions. Earlier749passed705.44s
+predates final geometry/lifecycle fixes and is not the final claim.
+Final copied migration:19 automation tables,3 initializations,40 legacy tables/
+1771 rows preserved,integrity ok. MainDB opened read-only, not automation-migrated.
+Copy: `data/automation/validation/phase5-schema-final-20261107`.
+Phase5 regression complete; commit, then Phase6. Acceptance item remains
+pending unless owner responds to the existing quality-inspection question.
+
+Owner chose RECORDED SOURCES + MOCKED GENERATION for the real24h Phase7 soak.
+Must still measure24 actual hours using bounded foreground harness, no service/
+APScheduler starts, no live uploads or paid calls. No Phase6/7 code started yet.
 
 Historical phase checkpoints follow; later entries supersede older STOP/pending notes.
 
@@ -695,3 +713,64 @@ Final verification results follow; the milestone commit is identified by title i
 - Exact local reality and limits are in the end-of-phase report and
   SERIES_VALIDATION.md. Backend frozen after final fixes; no need to rerun models.
 - Owner-authorized milestone commit to main, no push. **STOP. Phase5 not started.**
+
+
+## Phase5 checkpoint — local cast options requested
+
+Owner asked to create a few approved cast packages and chose recorded sources/
+mock generation for the real24h Phase7 soak. Actual elapsed24h must still be
+measured; no fake24h claim. We will prepare image candidates first, then obtain
+owner image approval before creating approved packages (§6.2). No auto-approval.
+
+Using existing installed pinned local SDXL, not a cloud/image API (local-only rule
+supersedes imagegen skill's default provider). Prompt guidance from imagegen skill
+was read/applied. Six images for three two-actor cast options: Tidal Echoes,
+Everyday Comedy, Coastal Adventure. Generation session30492, log
+/tmp/automation-cast-options.log, private manifest
+`data/automation/validation/cast-options-20261107/manifest.json`. Exclusive root
+creation prevents relaunch; DO NOT rerun /tmp/prepare_automation_casts.py.
+Lucien/Miri were generated64.23s/57.35s and visually inspected; others ongoing.
+No refs registered or cast packages approved yet. Images pending owner review.
+
+Concrete lifecycle observation: frozen TidalEchoes bible marks lucien1–30,
+miri1–3. Preserve it, do not silently extend Miri. Episode planner now constrains
+on-screen actor IDs to the frozen window/outline and carries inactive actors'
+prior state unchanged. UI shows each actor's active episode range.
+
+Phase5 first mocked tests4passed4.80s including35-day simulation. Shared56passed
+24.38s before extra cases; latest nine cases8.13s then lifecycle test added (new
+result pending). Frontend77passed/build649ms before final metadata changes.
+No actual video generation yet. Episode1 pilot240s awaits owner approval of images.
+
+## Phase 5 — production and lifecycle checkpoint (2026-11-07)
+
+Built `series/episode_planner.py`, `series/episodes.py` and
+`series/reference_frames.py`; extended the existing automation routes, durable
+worker dispatch, additive schema and GPU planner. New AutomationEpisodes React
+panel sits inside the existing Series page, using existing production inspection.
+Documentation: EPISODES.md, EPISODE_VALIDATION.md, README and DECISIONS.
+
+Verification covers 35 fake-clock days, buffer/skip/finale/rollover and strict
+publication order, bounded response feedback, hash-bound actual-script state,
+actor lifetime, concurrent stable reservations, copied migrations, and a
+240-second CPU FFmpeg end-to-end fixture with mocked models. No live publishing,
+paid calls, new dependency, scheduler start or systemd installation.
+
+Actual hardware: owner-approved Tidal Echoes references, two120s Ollama chapters,
+24 connected LTX image shots, fixed cast voices/ASR captions and FFmpeg assembly.
+Final duration240.086s, neural stage4828.80s, render wall5248.59s, repeat request
+unchanged. See EPISODE_VALIDATION.md for path/hash/tail and known framing limits.
+Manual quality acceptance is still pending, so Review-queue completion is NOT
+claimed. This does not block independent Governor implementation; it must never
+be silently converted to an automated approval during Phase6 verification.
+
+Try the existing Automation → Series planning page with an approved series, then
+confirm the local episode request. CLI targeted verification:
+`.venv/bin/python -m pytest tests/test_automation_episodes.py -q`.
+Next: opt-in Governor gates/slots/kill switch, standing authorizations, single
+scheduler-process wiring and seven simulated dry-run days, without live uploads.
+
+Final Phase5 regression: **757 Python passed688.12s** (+19 vs738),
+**77 frontend passed2.31s** (+2 vs75); build646ms. `git diff --check` and
+compileall passed. Manual real-video acceptance remains the sole Phase5 pending
+verification item; no human confirmations were invented.

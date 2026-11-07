@@ -2,14 +2,19 @@
 
 ## Daily automation and series planning — 2026-11-07
 
-Phase 4 adds **Automation → Series planning**: local premises, a frozen story
+Phase 5 adds local episode scripting with story memory, bounded chapters,
+connected LTX rendering, per-episode progress, buffer capacity, publication ordering,
+explicit skips and finale/next-series planning. The new episode panel reuses the
+existing quality inspection and Review workflows. New series still require human
+cast approval. See [episode operations](docs/automation/EPISODES.md) and
+[real 240-second render evidence](docs/automation/EPISODE_VALIDATION.md).
+The real episode awaits human quality confirmation; technical readiness alone
+never approves content. Governor/scheduler wiring remains future work.
+
+Phase 4 provides **Automation → Series planning**: local premises, a frozen story
 bible, a validated 30-day hook grid, outline editing and explicit manual cast
-approval. A series cannot activate itself. Episode rendering/lifecycle remains
-future work. See [series setup and API](docs/automation/SERIES.md) and the
+approval. See [series setup and API](docs/automation/SERIES.md) and the
 [real 30-hook outline with repair evidence](docs/automation/SERIES_VALIDATION.md).
-Final verification: **738 Python / 75 frontend tests passed**, build passed.
-The five real Shorts await manual quality confirmation; the series awaits cast
-approval. No episode production, scheduling or publishing is enabled by this work.
 
 Phase 3 adds the **Automation** daily-plan page, original local Shorts recipes,
 serial durable generation, GPU capacity forecasts, bounded backup substitution,
@@ -35,7 +40,7 @@ injectable Clock, additive SQLite schema, append-only audit events, persistent
 idempotency helpers and a planning-only Lane/Director skeleton. No automation runs
 on startup; existing creation, review, publishing, APIs and dashboards are unchanged.
 Five Shorts can be queued as an explicit local batch. The 30-day series outline and cast gate are available;
-5–10-minute episode production is not yet implemented. Automatic scheduling is not wired; Lane C ships disabled.
+5–10-minute episode production is available after cast approval. Automatic scheduling is not wired; Lane C ships disabled.
 
 ```bash
 # Offline inspection: no database writes, providers, GPU work or services.

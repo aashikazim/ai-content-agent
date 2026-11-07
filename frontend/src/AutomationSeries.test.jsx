@@ -7,6 +7,7 @@ afterEach(cleanup);
 function row(){return {series_id:'one',title:'The Drowned Bell',status:'awaiting_cast',planning_status:'completed',stage:'awaiting_cast',updated_at:'version1',premise:'A fictional coastal mystery.',receipts:[],bible:{characters:[{character_id:'ada',name:'Ada',description:'Coastal engineer',wardrobe:'Navy coat',voice_notes:'Low voice'}]},episodes:Array.from({length:30},(_,i)=>({ep_no:i+1,title:`Record ${i+1}`,hook:`Concrete coastal danger ${i+1}`,phase:'setup',duration_seconds:450}))};}
 function api(){const value=row();return vi.fn(async(path,options)=>{
  if(path==='/automation/series'&&!options)return {series:[value]};
+ if(path==='/automation/series/one/episodes')return {episodes:[]};
  if(path==='/generation/cast-packages')return {packages:[{package_id:'cast',name:'Approved coastal actors'}]};
  if(path==='/automation/series/one/outline')return {...value,episodes:JSON.parse(options.body).episodes,updated_at:'version2'};
  if(path==='/automation/series/one/approve-cast')return {...value,status:'active'};

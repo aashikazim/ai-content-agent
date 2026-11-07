@@ -118,3 +118,25 @@ for the foundation and have not been implemented prematurely.
 - Story-only sampling .9/repeat_penalty1.2 and concise repairs avoid copy-forward
   loops; Shorts defaults remain unchanged. Retain every failed iteration and do
   not advertise this as a first-attempt successful local run.
+
+## Phase 5 — episodes and lifecycle (2026-11-07)
+
+- Preserve the Phase 4 regular 300–600s contract. The requested real 3–4-minute
+  pilot uses an explicit private-only 180–240s override, marked validation-only.
+- Script/story-state compilation reuses the existing long-plan service; all local
+  planner calls use the same receipt/claim discipline. Acknowledged malformed
+  output may receive bounded feedback; uncertain requests never gain a new claim.
+- Automated episodes use LTX image conditioning. Existing manual Wan/hybrid
+  workflows remain available; automated Wan needs explicit driving-footage support
+  and therefore fails closed instead of silently replacing a model.
+- Native LTX crops portrait inputs to landscape. Preserve original approved cast
+  assets and prepare derived scene references with contain-on-blur framing. This
+  fixes face removal without claiming new approval of fabricated identity assets
+  or full-frame cinematic composition.
+- The owner explicitly approved six generated portraits, three cast packages and
+  Tidal Echoes as the private pilot cast. Finished-video continuity/captions/rights
+  and content approval remain independent human actions. Never substitute technical
+  quality results for those manual confirmations.
+- Episode order trusts verified published records, never uploaded/private status.
+  Skips require owner confirmation/reason and retain actual state; rollover creates
+  a fresh planning intent and cannot approve the next cast.

@@ -142,3 +142,25 @@ SCHEMA_STATEMENTS += (
         PRIMARY KEY(series_id,stage,attempt_no))""",
 )
 AUTOMATION_TABLES |= frozenset({'automation_series_requests','automation_series_receipts'})
+
+# Phase 5: immutable episode intents, received script/state outputs and rollover.
+SCHEMA_STATEMENTS += (
+    """CREATE TABLE IF NOT EXISTS automation_episode_runs (
+        run_id TEXT PRIMARY KEY, series_id TEXT NOT NULL REFERENCES series(series_id),
+        ep_no INTEGER NOT NULL, request_json TEXT NOT NULL CHECK(json_valid(request_json)),
+        memory_json TEXT NOT NULL CHECK(json_valid(memory_json)), actor TEXT NOT NULL,
+        plan_date TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'queued',
+        validation_only INTEGER NOT NULL DEFAULT 0 CHECK(validation_only IN (0,1)),
+        script_attempt_id TEXT, production_id TEXT, job_id TEXT, error TEXT,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE(series_id,ep_no))""",
+    """CREATE TABLE IF NOT EXISTS automation_episode_receipts (
+        run_id TEXT NOT NULL REFERENCES automation_episode_runs(run_id),
+        stage TEXT NOT NULL, attempt_no INTEGER NOT NULL CHECK(attempt_no BETWEEN 1 AND 3),
+        status TEXT NOT NULL, body_json TEXT CHECK(body_json IS NULL OR json_valid(body_json)),
+        errors_json TEXT NOT NULL DEFAULT '[]' CHECK(json_valid(errors_json)),
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, PRIMARY KEY(run_id,stage,attempt_no))""",
+    """CREATE TABLE IF NOT EXISTS automation_series_rollovers (
+        series_id TEXT PRIMARY KEY REFERENCES series(series_id), next_request_id TEXT NOT NULL UNIQUE,
+        next_series_id TEXT, eligible_date TEXT NOT NULL, created_at TEXT NOT NULL,updated_at TEXT NOT NULL)""",
+)
+AUTOMATION_TABLES |= frozenset({'automation_episode_runs','automation_episode_receipts','automation_series_rollovers'})

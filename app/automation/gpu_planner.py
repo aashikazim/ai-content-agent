@@ -43,7 +43,7 @@ class GPUPlanner:
             if estimate()<=capacity:break
             if step=='shorten_shorts':
                 for item in selected:
-                    if item['duration_s']>30:item['duration_s']=30;item['degradations'].append('shortened to 30s')
+                    if item.get('kind','short')!='episode' and item['duration_s']>30:item['duration_s']=30;item['degradations'].append('shortened to 30s')
             else:
                 for item in reversed(selected):
                     if estimate()<=capacity:break
