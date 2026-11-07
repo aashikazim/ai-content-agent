@@ -2,9 +2,11 @@ import React,{useCallback,useEffect,useRef,useState} from 'react';
 import CloudProduction from './CloudProduction.jsx';
 import AutomationSeries from './AutomationSeries.jsx';
 import AutomationGovernor from './AutomationGovernor.jsx';
+import AutomationOperations from './AutomationOperations.jsx';
 import './GenerationForm.css';
 
 export default function Automation({request,onNavigate}) {
+ const [showOperations,setShowOperations]=useState(false);
  const [showGovernor,setShowGovernor]=useState(false);
  const [showSeries,setShowSeries]=useState(false);
  const editedDay=useRef(false);
@@ -20,10 +22,11 @@ export default function Automation({request,onNavigate}) {
  useEffect(()=>setConfirmed(false),[day]);
  async function act(fn){setBusy(true);setError('');try{await fn();}catch(e){setError(e.message);}finally{setBusy(false);}}
  const forecast=plan?.run?.forecast;
+ if(showOperations)return <section className="generation-workspace"><button className="button subtle" onClick={()=>setShowOperations(false)}>Back to daily Shorts</button><AutomationOperations request={request}/></section>;
  if(showGovernor)return <section className="generation-workspace"><button className="button subtle" onClick={()=>setShowGovernor(false)}>Back to daily Shorts</button><AutomationGovernor request={request}/></section>;
  if(showSeries)return <section className="generation-workspace"><button className="button subtle" onClick={()=>setShowSeries(false)}>Back to daily Shorts</button><AutomationSeries request={request} onNavigate={onNavigate}/></section>;
  return <section className="generation-workspace"><div className="generation-section">
-  <div className="generation-section-heading"><div><h2>Daily production</h2><button className="button subtle" onClick={()=>setShowGovernor(true)}>Publishing Governor</button><button className="button subtle" onClick={()=>setShowSeries(true)}>Series planning</button><p>Local generation, durable plans and human quality review.</p></div></div>
+  <div className="generation-section-heading"><div><h2>Daily production</h2><button className="button subtle" onClick={()=>setShowOperations(true)}>Operations</button><button className="button subtle" onClick={()=>setShowGovernor(true)}>Publishing Governor</button><button className="button subtle" onClick={()=>setShowSeries(true)}>Series planning</button><p>Local generation, durable plans and human quality review.</p></div></div>
   {error&&<div className="notice notice-error" role="alert">{error}</div>}
   {metadata&&!metadata.enabled&&<p className="notice">Automation is disabled. Preview remains available. Enable AUTOMATION_ENABLED locally before requesting production.</p>}
   <div className="generation-grid"><label className="generation-field">Plan date<input type="date" value={day} onChange={e=>{editedDay.current=true;setDay(e.target.value);}}/></label></div>

@@ -1,0 +1,9 @@
+[Unit]
+Description=AI Content Agent Governor status inspection (no scheduling or uploads)
+
+[Service]
+Type=oneshot
+WorkingDirectory=@ROOT@
+ExecStart=@ROOT@/.venv/bin/python scripts/run_governor.py
+UMask=0077
+NoNewPrivileges=true

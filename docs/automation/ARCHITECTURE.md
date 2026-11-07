@@ -1,10 +1,61 @@
-# Automation layer — Phase 1 foundation
+# Automation layer architecture
 
-Scope: root `AGENTS_AUTOMATION.md`, dated implementation 2026-11-06. This is an
-additive layer on the existing single-host application, not a replacement workflow.
-Phase 1 is complete. Phase 2 is committed as 7f0c1d9. Phase 3 generation/queue/UI
-code is tested with mocked inference; its private five-Short hardware pilot is
-pending. See PROGRESS.md for current measured acceptance and phase boundaries.
+Scope: root AGENTS_AUTOMATION.md. The existing local-first application remains the
+production engine. Phases1–6 are committed; Phase7 operations and hardening are
+implemented with final elapsed-time acceptance still pending. PROGRESS.md and
+VERIFICATION.md record actual evidence rather than treating tests as deployment.
+
+## Current paths
+
+- Recorded/live topic adapters → TrendCollector → TopicSelector → ShortsService:
+  immutable day/slot intents, original scripts and the existing tracked production
+  workflow. Automatic research bundles remain unreviewed/unverified.
+- SeriesService plans premises/bible/30hooks and requires owner-approved cast.
+  EpisodeService freezes memory and slots, compiles <=180s chapters, uses native
+  connected LTX/FFmpeg, derives state from the actual script and buffers future
+  episodes. Generation never approves or publishes.
+- DirectorRuntime queues local work inside the shared GPU window through the
+  existing durable queue. GPUPlanner uses observed rates where available, labeled
+  historical seeds otherwise, with bounded degradation. Existing GPU locks,
+  isolated workers, memory guards, provider UUIDs and unknown-outcome holds stay.
+- Separate Governor: manual by default; explicit auto_with_gates plus enabled flags
+  and non-dry-run mode are required for live approval/publication at slots. Gates
+  inspect immutable technical/speech/caption/reference evidence, duplicates, owner
+  holds, order, pauses and caps. It reuses review/publishing services and permanent
+  job/platform claims; uncertain outcomes never gain a retry token.
+- Governor dry-run projects approved status read-only into PublishingService's
+  existing validator. It persists no real approval, human inspection or upload.
+  Quote-bound standing consent helpers reserve Decimal daily/total/global caps;
+  default recipes remain local-only and global paid budget remains zero.
+- scheduler.py retains one BlockingScheduler, registering Director/trends/report
+  and optional Governor jobs only behind automation flags. Its Director systemd
+  alias is the same unit. Governor-check is status-only. No services were started.
+- React Automation contains Daily production, Series/Episodes, Publishing Governor
+  and read-only Operations views. Admin session/CSRF protects mutations. Existing
+  creation, review, publishing and Streamlit functionality remain available.
+- Twenty-one additive automation tables share the existing SQLite DB. Phase7 adds
+  no tables; scheduling fills existing nullable planned_publish_at fields on
+  explicit episode/tick requests. Development migrations run on backups/copies,
+  preserving40legacytables/1771rows and user_version.
+
+Lane C remains disabled with the Lane protocol/trusted-registration extension
+boundary. Its actual recipe/production behavior is deliberately unimplemented
+until the owner defines it. No stretch item has started.
+
+## Verification boundary
+
+The real five-Short pilot and240s episode are separate from mock tests. The episode
+has owner quality confirmation and is pending_review privately; neither pilot is
+proof of live platform publishing. The35-day simulation uses explicit mock
+publication history. The actual24h foreground check uses recorded sources,
+mocked generation/media/identity and dry-run publishing, with network/GPU/upload/
+subprocess guards, persisted source hashes and actual monotonic/UTC time. It does
+not start services or substitute fake-clock time for24elapsedhours.
+
+## Historical foundation design (Phase1)
+
+The following records the original reuse map and staged boundaries. Later work
+above supersedes historical “future” or “pending” labels.
 
 ## Existing implementation and reuse boundaries
 

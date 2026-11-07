@@ -45,12 +45,14 @@ def setup(tmp_path,monkeypatch,*,live=False):
     return gov,clock
 
 
-def add_job(gov,tmp_path,*,slot=1,title=None,kind='topic_shorts',validation=False):
-    production=cloud_production();production.content_plan.title=title or 'Original lunar clock '+str(uuid4())
+def add_job(gov,tmp_path,*,slot=1,title=None,kind='topic_shorts',validation=False,production=None,configuration=None,daily=True):
+    production=production or cloud_production();production.content_plan.title=title or 'Original lunar clock '+str(uuid4())
     plan=production.content_plan;identifier=str(uuid4());pid=str(uuid4());directory=tmp_path/identifier;directory.mkdir()
     output=directory/'final_video.mp4';output.write_bytes(b'private moving fixture '+identifier.encode())
-    digest=media_sha256(output);quality=dict(technical_passed=True,sha256=digest,duration_seconds=45,width=720,height=1280,has_audio=True,motion_samples_distinct=20)
+    digest=media_sha256(output);quality=dict(technical_passed=True,sha256=digest,duration_seconds=plan.total_duration,width=720,height=1280,has_audio=True,motion_samples_distinct=20)
     config={'video_provider':'local_cinematic','video_model':'ltx-2.5','source_mode':'topic','topic':'Moon clock', 'duration_seconds':45,'captions':'asr','fps':24,'aspect_ratio':'9:16','resolution':'720p'}
+    if configuration:config.update(configuration)
+    if config['aspect_ratio']=='16:9':quality.update(width=1280,height=720)
     plan_id,_=gov.productions.content_storage.save_plan(plan)
     jid=gov.jobs.create_job();gov.jobs.update_job(jid,'awaiting_quality_review',plan_id=plan_id,video_path=str(output))
     now=gov.storage.timestamp()
@@ -61,9 +63,10 @@ def add_job(gov,tmp_path,*,slot=1,title=None,kind='topic_shorts',validation=Fals
             q=json.dumps({'sha256':media_sha256(clip)})
             c.execute('''INSERT INTO video_shots(attempt_id,production_id,shot_number,scene_number,version,operation,request_json,quote_id,status,clip_path,selected,media_quality_json,estimate_usd,created_at,updated_at)
                 VALUES (?,?,?,?,1,'generate','{}','fixture','completed',?,1,?,'0',1,1)''',(str(uuid4()),pid,shot.shot_number,shot.scene_number,str(clip),q))
-    with gov.storage.connect() as c:
-        c.execute('''INSERT INTO daily_plans(daily_plan_id,plan_date,lane,slot,job_id,recipe,status,planned_publish_at,created_at,updated_at)
-            VALUES (?,?,?, ?,?,'{}','in_review',?,?,?)''',(identifier,gov.storage.clock.now().date().isoformat(),'shorts_daily',slot,jid,now,now,now))
+    if daily:
+        with gov.storage.connect() as c:
+            c.execute('''INSERT INTO daily_plans(daily_plan_id,plan_date,lane,slot,job_id,recipe,status,planned_publish_at,created_at,updated_at)
+                VALUES (?,?,?, ?,?,'{}','in_review',?,?,?)''',(identifier,gov.storage.clock.now().date().isoformat(),'shorts_daily',slot,jid,now,now,now))
     scenes=[]
     for scene in plan.scenes:
         scenes.append(dict(scene_number=scene.scene_number,duration=scene.duration_seconds,speech_quality={'word_error_rate':.01,'words':[{'start':0,'end':1,'word':'fixture'}]},captions=[[0,1,'fixture']]))
@@ -335,3 +338,10 @@ def test_director_nightly_runtime_reuses_day_and_durable_queue(tmp_path,monkeypa
         assert c.execute('SELECT count(*) FROM automation_day_runs').fetchone()[0]==1
         assert c.execute('SELECT count(*) FROM daily_plans').fetchone()[0]==5
         assert c.execute("SELECT count(*) FROM app_work_queue WHERE kind='automation'").fetchone()[0]==1
+
+
+def test_completed_actions_do_not_repeat_expensive_media_decode(tmp_path,monkeypatch):
+    gov,_=setup(tmp_path,monkeypatch);item=add_job(gov,tmp_path)
+    validator=Mock(return_value=item['quality']);gov.gates.media_validator=validator
+    gov.tick();gov.tick();gov.tick()
+    assert validator.call_count==1

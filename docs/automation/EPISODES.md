@@ -45,7 +45,10 @@ execution. Inspect retained IDs before taking any recovery action.
 ## Ordering and rollover
 
 The next script requires the previous script's summary/state. Buffering is
-independent of publication. Only a verified `published` publication counts for
+independent of publication. A future series prewarms within its configured buffer
+lead; missing local-time publish slots are frozen for all30episodes. Existing
+slots are preserved, including the correct UTC offset through daylight-saving
+changes. Early generation cannot make a future slot due. Only a verified `published` publication counts for
 ordering; uploaded/private/submitted do not. Episode N requires every earlier
 episode to be published or explicitly skipped. Skips preserve actual scripted
 state where available and otherwise carry prior state plus deferred thread

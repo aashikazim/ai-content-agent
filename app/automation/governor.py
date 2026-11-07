@@ -204,6 +204,19 @@ class Governor:
             if cfg is None or not self.effective_lane(item['lane'])[0]:continue
             if self.effective_lane(item['lane'])[1]!='auto_with_gates':
                 decisions.append(self.decision(item,'manual',['Lane remains manual']));continue
+            available=[]
+            mode='dry_run' if self.settings.governor_dry_run else 'live'
+            with self.storage.connect() as c:
+                for platform in cfg.platforms:
+                    existing=c.execute('SELECT status FROM automation_governor_actions WHERE job_id=? AND platform=? AND mode=?',(item['job_id'],platform,mode)).fetchone()
+                    publication=c.execute('SELECT status FROM publications WHERE job_id=? AND platform=?',(item['job_id'],platform)).fetchone()
+                    if existing or publication:
+                        decisions.append(self.decision(item,platform,['Existing action or upload attempt; no automatic repeat']))
+                    else:available.append(platform)
+            if not available:continue
+            if self.due_slot(item) is None:
+                for platform in available:decisions.append(self.decision(item,platform,['Waiting for the next configured publish slot']))
+                continue
             job=self.jobs.get_job(item['job_id'])
             if not job:continue
             with self.storage.connect() as c:row=c.execute('SELECT production_id FROM video_productions WHERE job_id=?',(item['job_id'],)).fetchone()
@@ -217,7 +230,7 @@ class Governor:
                 from app.models.generation_config import GenerationConfig
                 self.productions.references.verified(self.productions.all_references(GenerationConfig.model_validate(production['configuration'])))
             except (ValueError,KeyError,OSError):reasons.append('Frozen identity or continuation evidence cannot be verified')
-            for platform in cfg.platforms:
+            for platform in available:
                 why=list(reasons)
                 if platform not in ({'youtube','facebook'} if item['kind']=='topic_shorts' else {'youtube'}):why.append('Platform not supported for this lane')
                 why+=self.operational_holds(item,platform,job,plan)

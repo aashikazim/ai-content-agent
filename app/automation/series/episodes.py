@@ -95,6 +95,7 @@ class EpisodeService:
                 reserved+=sum(json.loads(r[0])['estimated_seconds'] for r in c.execute('SELECT forecast_json FROM automation_day_runs WHERE plan_date=?',(day.isoformat(),)))
                 if not forecast['fits'] or forecast['items'][0].get('skipped') or reserved+forecast['estimated_seconds']>forecast['capacity_seconds']:
                     raise ValueError('Nightly GPU capacity is reserved; reuse the existing buffer or wait for the next window')
+            self._schedule(c,identifier,lane)
             c.execute('''INSERT OR IGNORE INTO automation_episode_runs(run_id,series_id,ep_no,request_json,memory_json,actor,plan_date,validation_only,created_at,updated_at)
                 VALUES (?,?,?,?,?,?,?,?,?,?)''',(run_id,identifier,number,canonical_json(payload),canonical_json(context),actor,day.isoformat(),int(validation),now,now))
             stamp=int(time.time())
@@ -105,6 +106,18 @@ class EpisodeService:
             except ValueError:
                 self.update(run_id,status='launch_failed',error='Queued intent retained; inspect worker launch');raise
         return self.get(run_id)
+
+    def _schedule(self,conn,identifier,cfg):
+        """Freeze missing episode slots, including pre-start buffer generation."""
+        row=conn.execute('SELECT start_date FROM series WHERE series_id=?',(identifier,)).fetchone()
+        start=date.fromisoformat(row[0]) if row[0] else local_day(self.storage.clock,self.settings.config.timezone)
+        now=self.storage.timestamp()
+        conn.execute('UPDATE series SET start_date=COALESCE(start_date,?),updated_at=? WHERE series_id=? AND start_date IS NULL',(start.isoformat(),now,identifier))
+        for number in range(1,31):
+            day=start+timedelta(days=number-1)
+            slot=datetime.fromisoformat(day.isoformat()+'T'+cfg.publish_slot).replace(tzinfo=ZoneInfo(self.settings.config.timezone)).astimezone(timezone.utc).isoformat()
+            conn.execute('UPDATE series_episodes SET planned_publish_at=?,updated_at=? WHERE series_id=? AND ep_no=? AND planned_publish_at IS NULL',(slot,now,identifier,number))
+        return start
 
     def get(self,identifier:str)->dict:
         with self.storage.connect() as c:
@@ -264,10 +277,9 @@ class EpisodeService:
             if len(eps)==30 and eps[-1]['status']=='published' and all(e['status'] in {'published','skipped'} for e in eps):
                 self.rollover(item,cfg,day,result,published_at=eps[-1]['actual_publish_at']);continue
             if item['status']!='active':continue
-            start=date.fromisoformat(item['start_date']) if item['start_date'] else day
-            if not item['start_date']:
-                with self.storage.connect() as c:c.execute('UPDATE series SET start_date=?,updated_at=? WHERE series_id=? AND start_date IS NULL',(start.isoformat(),self.storage.timestamp(),item['series_id']))
-            if day<start:continue
+            with self.storage.connect() as c:
+                c.execute('BEGIN IMMEDIATE');start=self._schedule(c,item['series_id'],cfg)
+            if day<start-timedelta(days=cfg.buffer_ahead_episodes):continue
             next_ep=next((e['ep_no'] for e in eps if e['status'] not in {'published','skipped'}),31)
             end=min(30,next_ep+cfg.buffer_ahead_episodes)
             for ep in eps:

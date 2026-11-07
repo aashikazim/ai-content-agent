@@ -2,37 +2,70 @@
 
 ## CURRENT RESUME STATE
 
-Phase5 committed11dead8 on main. Phase6 implementation and verification complete; commit checkpoint below. Latest complete baseline757Python688.12s/77frontend2.31s.
-Phase6 targeted18passed10.07s; frontend79passed1.96s/build624ms. Full Python
-775passed686.54s, log /tmp/automation-phase6-final-python.log. Prior broad
-run221passed/1failed was an analytics-fixture expectation; corrected targetedcase
-passes. No production scoring math was changed. Phase7 not started.
+Main only. Phase5 committed11dead8; Phase6 committedd0ba630. Phase7 code/docs/tests
+are being committed on explicit owner instruction before true24h acceptance.
+Elapsed acceptance remains pending. All five Shorts' manual quality
+confirmations have now been received and applied. The commit does not certify the pending soak. No stretch started.
+No services/schedulers, live uploads, paid calls or new dependencies were used.
 
-Owner inspected the real240s episode and explicitly confirmed continuity/captions/
-rights. Existing human quality flow accepted24 selected shots and moved job
-b512edc1-2f34-437e-aaa7-85c736901f42 to pending_review in PRIVATE validation DB:
-`data/automation/validation/episode-20261107-v2/validation/episode.db`.
-Production84adf95f-d492-42ed-bbf1-45449f1f52e4, run774fc942-fb20-50e8-b922-f50e6d69ca40.
-No content approval or publishing; zero publication rows. Do not rerun generation
-or /tmp/send_automation_episode_to_review.py. Evidence: manual-quality-acceptance.json,
-verification.json, EPISODE_VALIDATION.md. Duration240.086s,24shots, neural4828.8s,
-wall5248.59s. Final path/hash/tail in the report. The two-shot rejected framing probe
-is retained separately; no uncertain generation was retried.
+**Final full regression:791Python passed758.04s**, log
+`/tmp/automation-phase7-final-python.log` (execution98716 completed).
+**82frontend passed2.26s/build662ms**, log /tmp/automation-phase7-frontend.log.
+Compared with Phase6 complete invocation775 + final targeted21; this final full
+run includes all current791cases.35-day combined simulation passed,29explicit MOCK
+publication records/1skip/rollover awaitingcast,0actualuploads and0duplicate calls.
+Private report: data/automation/validation/phase7-sim35-20261107/35-day-report.json.
+Short smoke/resume tests passed; smoke is not24h acceptance. Four rendered units
+verified with systemd-analyze --user verify outside sandbox, exit0/no output.
+No units installed/started. Migration copy phase7-schema-20261107 verified21automation
+and40legacytables/1771rows,3initializations/integrityok; mainDB read-only.
 
-Owner-approved cast IDs: Tidal Echoes6cf9b34d-ffcb-4751-bbcb-6a9c5c13fe7b,
+**FINAL REAL24h RUNNING**, foreground execution73149 (TTY), stdout
+`/tmp/automation-phase7-real24h-final.log`. Root:
+`data/automation/validation/phase7-real24h-final-20261107`.
+Started2026-11-07T15:46:33.603316+00:00, earliest completion
+2026-11-08T15:46:33.603316+00:00. Read progress.json and heartbeats.jsonl.
+Uses SystemClock+monotonic active time, recorded sources, MOCK generation/media/
+planning/identity, real queue/Director/Governor/PublishingService dry-run.
+Network/GPU/upload/subprocess paths forbidden; publication rows must remain0.
+43source-file hashes stored; resume refuses code drift. Never launch a second
+process on an active root. On a genuine interruption use the SAME exact command:
+`.venv/bin/python scripts/automation_soak.py --root data/automation/validation/phase7-real24h-final-20261107`
+Downtime is excluded and continuity flaggedfalse. Do not relabel a smoke run.
+The old phase7-real24h-20261107 five-minute preflight is interrupted/preserved and
+DOES NOT COUNT; restarted after finding/fixing pre-start buffer and missing episode
+publish slots. No source edits to timed modules since final start. Docs are editable.
+
+Phase7 built: read-only Operations API/page, early Governor filtering to avoid
+repeat decode of completed/non-due work, pre-start buffer lead and frozen30local
+publish slots (DST-safe/preserve existing), recorded/mock soak harness, systemd
+Director alias/status-only Governor check, RUNBOOK/GO_LIVE/VERIFICATION/current
+architecture and decisions. No new schema tables. All working features retained.
+
+Owner confirmed the real240s episode's continuity/captions/rights. Existing human
+flow accepted24shots and put jobb512edc1-2f34-437e-aaa7-85c736901f42 in pending_review
+in PRIVATE DB data/automation/validation/episode-20261107-v2/validation/episode.db.
+Production84adf95f-d492-42ed-bbf1-45449f1f52e4; run774fc942-fb20-50e8-b922-f50e6d69ca40.
+No content approval or publication;0publicationrows. Do not rerun generation or
+/tmp/send_automation_episode_to_review.py. MP4/hash/tail/4828.8neural/5248.59wall
+in EPISODE_VALIDATION.md; manual-quality-acceptance.json and verification.json.
+Owner-approved cast IDs: Tidal6cf9b34d-ffcb-4751-bbcb-6a9c5c13fe7b,
 Comedy8ddfc36e-9760-4c38-aab1-7c78a278d00b,
-Adventureccddbef1-3abd-4186-813c-8541a5fb49ad. MainDB registry backed up first.
-No automation migrations applied to live DB. Phase6 copied migration21tables,
-legacy40tables/1771rows preserved, integrityok,3initializations.
-Private copy: data/automation/validation/phase6-schema-20261107.
-Seven-day evidence: data/automation/validation/phase6-governor-20261107/seven-day-decisions.json
-(14distinct dry-run PublishingService validations,zero duplicate calls/uploads/
-publication rows/real approvals). GPU calls and upload calls forbidden in tests.
+Adventureccddbef1-3abd-4186-813c-8541a5fb49ad. Main registry backed up first.
 
-Next: complete Phase6 full regression/docs/report/commit, then Phase7 hardening,
-35-day integration soak and REAL24h validation. Owner chose recorded sources and
-mocked generation for24h; still require24 actual elapsed hours, private paths,
-dry-run publishing, no service/APScheduler starts. No stretch authorized.
+All five earlier real Shorts in shorts-20261106/validation.db are now pending_review.
+Owner explicitly confirmed allfive after inspection. Existing send_to_review was
+used with the three human checks; media hashes and selected shots were revalidated.
+Backup: before-owner-quality-confirmation.db; proof: manual-quality-acceptance.json.
+Five pending_review jobs,0publicationrows,0newgenerationrequests. No content
+approval or publishing. Do NOT rerun /tmp/confirm_automation_shorts_quality.py.
+
+Next steps: check real24h heartbeat/result. When true elapsed acceptance is resolved, verify86400active AND wall seconds, mode
+real_24h_dry_run, source hashes still match,0forbiddencalls/0uploads/0duplicates/
+0publicationrows, no interrupted queue rows. Update VERIFICATION/README/PROGRESS,
+update the final report. Owner now authorizes committing Phase7 before soak
+completion; discovered bugs get separate bug-fix commits. STOP after final acceptance.
+No stretch work or push. If process is still running, report truthfully incomplete.
 
 Historical phase checkpoints follow; later entries supersede older STOP/pending notes.
 
@@ -849,3 +882,129 @@ tests, scripts/run_governor.py, tests/test_automation_governor.py and tracked do
 Suggested commit: feat(automation): add opt-in Governor and scheduled Director.
 Next: Phase7 operations/dashboard hardening, rendered-only units, runbook,35-day
 simulation and actual24h dry-run. Owner chose recorded sources/mocked generation.
+
+## Phase7 work in progress — before real24h operation
+
+Main HEADd0ba630 (Phase6); Phase5 is11dead8. Phase7 uncommitted.
+Added read-only operations API/page, early Governor filtering of already-processed
+jobs and non-due slots, development-only SoakHarness reusing existing fixture
+factories, scripts/automation_soak.py, scheduler Director alias and status-only
+Governor check unit. No stretch work. No .env/credential changes.
+
+Combined35-day test passed2cases59.27s: failure10/explicit skip,29 MOCK published
+episodes, finale, one rollover awaiting cast. Those platform records are explicit
+simulated history in a test DB, never actual uploads. Initial rollover mock reused
+an old premise; real history dedupe rejected it. Corrected fixture premises; no
+production validator weakened. Governor regression21passed11.07s; operations5passed
+0.87s; new frontend2passed348ms. Short elapsed smoke completed, NOT24h acceptance.
+Unit files rendered under data/automation/validation/phase7-systemd-20261107.
+Initial sandbox verify printed socket warnings despite exit0; reran read-only
+systemd-analyze --user verify outside sandbox, exit0/no output. No install/start.
+
+NEXT LONG OPERATION: start ONE bounded foreground24h validation with SystemClock
+and monotonic active-time accounting. Root:
+`data/automation/validation/phase7-real24h-20261107`.
+Command: `.venv/bin/python scripts/automation_soak.py --root data/automation/validation/phase7-real24h-20261107`
+stdout log `/tmp/automation-phase7-real24h.log`; progress.json and heartbeats.jsonl
+persist at the private root. Record executionID/start/deadline after launch.
+Uses recorded YouTube fixtures and MOCK generation/media/planners/identity only;
+actual queue/Director/Governor/dry-run PublishingService. Bootstrap fixtures exercise
+today's slots; subsequent automatic generation respects the real nightly window.
+Network/GPU/upload/subprocess paths raise; no scheduler/service starts.24h CLI never
+calls simulate_publish_episode; publication rows must remain0. Do not label fake
+media technical checks as real codec/GPU evidence. Do not relaunch an active root.
+On interruption, same command resumes active-time accumulation without counting
+downtime; report discontinuity. Never claim complete before86400observed seconds.
+Need final full regressions/runbook/matrix/checklist, wait true24h completion, then
+Phase7 report/commit and stop. Do not commit Phase7 while acceptance is pending.
+
+24h foreground execution75101 STARTED2026-11-07T15:38:21.248019+00:00.
+Earliest completion2026-11-08T15:38:21.248019+00:00 (active and wall>=86400s).
+Firsttick running,0publicationrows/0forbiddencalls/interrupted=[]; not acceptance.
+Inspect private progress.json, do not launch a second process. No scheduler started.
+
+### Phase7 preflight interruption, NOT24h completion
+
+Foreground75101 deliberately interrupted after a few minutes (see retained
+phase7-real24h-20261107/progress.json),0uploads/0publicationrows/0forbiddencalls.
+Hardening found future-start buffering was blocked and episode planned_publish_at
+was never persisted. Fixing EpisodeService: prewarm inside the configured lead,
+freeze missing30local-time slots atomically at enqueue/tick, preserve existing
+slots and handle DST via UTC conversion. Tests added for lead/future publication/
+slot immutability/DST. Earlier preflight cannot certify this final code; retain it,
+then start a NEW final24h root after targeted checks. No real generation restarted.
+
+Final scheduling hardening targeted4passed5.52s. Persisted slots cover30episodes,
+retain local19:00 across DST, preserve existing frozen values. Buffer lead now
+warms before a future start without making publication eligible early. No schema
+change. New unit tests included in the final full regression execution98716,
+`/tmp/automation-phase7-final-python.log`; frontend run59449 in progress.
+
+About to start FINAL24h root `phase7-real24h-final-20261107` under private validation.
+The old5-minute preflight remains interrupted and does not count. Final run records
+source hashes; resume refuses code drift, excludes downtime and requires86400active
+and UTC elapsed seconds. Explicit SIGTERM is recorded. No source edits to timed
+modules while final run is active; independent docs/UI changes do not alter it.
+
+Latest observed final-soak checkpoint: {"status": "running", "ticks": 29, "active_elapsed_seconds": 841.4762031181017, "last_heartbeat_at": "2026-11-07T16:00:35.079570+00:00"}; source hashes match. This is not24h acceptance.
+
+
+## Phase7 final regression / waiting for elapsed acceptance
+
+Full Python791passed758.04s, frontend82passed2.26s/build662ms. Compileall,
+diff-check, documentation links and fresh copied migration passed. Four unit
+templates render/verify; no install/start. PHASE7_REPORT.md lists all24changed/added
+files and current limitations; source remains uncommitted until acceptance.
+No stretch work, paid requests, actual uploads, generation retries or live schema
+changes occurred. Phase5 real episode remains pending_review after owner checks.
+Earlier five real Shorts remain awaiting_quality_review, async confirmation pending.
+
+Final timed checkpoint at 2026-11-07T16:03:32.661593+00:00:
+{
+  "status": "running",
+  "started_at": "2026-11-07T15:46:33.603316+00:00",
+  "last_heartbeat_at": "2026-11-07T16:03:05.147712+00:00",
+  "active_elapsed_seconds": 991.5443453810876,
+  "ticks": 34,
+  "sessions": 1,
+  "continuous": true,
+  "matching_sources": true,
+  "publication_rows": 0,
+  "forbidden_calls": 0,
+  "duplicate_calls": 0,
+  "validation_calls": 0,
+  "interrupted": []
+}
+
+Next: let foreground73149 finish; do not replace86400seconds with fake time.
+Check progress/source hashes/zero external effects, handle owner Shorts reply via
+existing manual quality transition, update matrix/report, commit Phase7 on main
+(owner authorized) and stop. If timedrun still running, report incomplete honestly.
+Suggested commit: feat(automation): harden operations and verify dry-run lifecycle.
+
+
+## Owner confirmed all five Shorts — 2026-11-07T20:43:41.772442+00:00
+
+Existing human quality flow moved all5 private pilot jobs to pending_review.
+Verified final/shot media integrity, selected completed shots and final job statuses.
+No source code changes, GPU/model requests, content approvals or uploads. Private
+DB backup and manual-quality-acceptance.json saved. This supersedes earlier
+statements that Shorts quality confirmation was pending. Only actual24h acceptance
+remains before Phase7 report/commit. Last observed timedrun remains running with
+0publicationrows/0forbiddencalls/0duplicatecalls. No timed source files changed.
+
+
+## Owner override — commit Phase7 before elapsed acceptance
+
+Owner explicitly requested: "make a commit upto phase 7. If anything arise in the
+dry-run, we fix and commit again with bug-fix commit message." This supersedes the
+earlier wait-to-commit instruction, without declaring the24h run complete or
+authorizing uploads/services/stretch work. Commit current verified implementation
+and docs on main; keep the foreground soak running unchanged. Future discovered
+bugs receive separate fixes/tests/bug-fix commits.
+
+Latest checked soak: running,615ticks,18434.91active seconds (~5.12h),
+heartbeat2026-11-07T20:53:48.513045+00:00; source hashes match,0publicationrows/
+0forbiddencalls/0duplicatecalls/interrupted=[]. Existing791Python/82frontend/build
+results apply; subsequent changes are documentation and authorized private quality
+transitions only. No reason to rerun the long suites for this commit-only request.

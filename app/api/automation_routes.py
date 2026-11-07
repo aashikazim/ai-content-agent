@@ -255,3 +255,8 @@ class GovernorActionClose(BaseModel):
 @router.post('/governor/actions/{identifier}/close')
 def close_governor_action(identifier:UUID,body:GovernorActionClose,principal=Depends(require_session)):
     return series_action(lambda:governor_service().close_action(str(identifier),notes=body.notes,actor=principal['username'],confirmed=body.confirmed))
+
+@router.get('/operations')
+def automation_operations():
+    from app.automation.operations import snapshot
+    return snapshot(os.getenv('DATABASE_PATH','data/trends.db'))

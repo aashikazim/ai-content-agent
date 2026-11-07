@@ -2,6 +2,16 @@
 
 ## Daily automation and series planning — 2026-11-07
 
+Phase 7 adds **Automation → Operations**, read-only queue/heartbeat/recovery views,
+GPU seed/measurement labels, systemd previews and the [operations runbook](docs/automation/RUNBOOK.md).
+The [verification matrix](docs/automation/VERIFICATION.md) and
+[go-live checklist](docs/automation/GO_LIVE.md) distinguish completed tests from
+pending acceptance. Final regression: **791 Python / 82 frontend tests passed**, build passed.
+The 35-day mock simulation passed; the required actual 24-hour
+recorded/mock foreground dry-run is **in progress**, not complete. No services
+were installed/started, no live upload ran, and stretch work remains unselected.
+
+
 Phase 5 adds local episode scripting with story memory, bounded chapters,
 connected LTX rendering, per-episode progress, buffer capacity, publication ordering,
 explicit skips and finale/next-series planning. The new episode panel reuses the
@@ -20,8 +30,8 @@ approval. See [series setup and API](docs/automation/SERIES.md) and the
 
 Phase 3 adds the **Automation** daily-plan page, original local Shorts recipes,
 serial durable generation, GPU capacity forecasts, bounded backup substitution,
-per-job timing and private daily reports. Finished footage awaits human quality
-inspection; it is never automatically approved or published. Automation remains
+per-job timing and private daily reports. Under the default manual mode, finished footage awaits human quality
+inspection and separate approval/publishing. The opt-in Governor is described below. Automation remains
 disabled by default. See [Daily Shorts operations](docs/automation/SHORTS.md) and
 [verification/resume status](docs/automation/PROGRESS.md); real pilot results are
 recorded there separately from mocked tests.

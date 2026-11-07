@@ -164,3 +164,37 @@ for the foundation and have not been implemented prematurely.
   paid helpers cannot silently change a provider or bypass quote consumption.
 - Reuse FeedbackService ranking with >=3 latest published samples per category and
   bounded weights, retaining hard quotas. No fabricated analytics or GPU measurements.
+
+
+## Phase7 — hardening and truthful elapsed-time acceptance (2026-11-07)
+
+- Keep Operations read-only even for an uninitialized legacy database. Label seeds,
+  real measured stages and synthetic output separately; do not start/recover work
+  from a health page. Governor skips completed actions/non-due slots before costly
+  decode checks, retaining atomic publication guards and reconciliation holds.
+- Render Director as an alias of the existing scheduler; add a status-only Governor
+  oneshot. Four rendered templates verified offline; no installation/start and no
+  second APScheduler process.
+- Freeze missing episode slots in existing columns, with local-time/DST conversion,
+  preserving existing values. Allow pre-start buffering within the configured lead;
+  early generation never makes future publication eligible. This closes gaps found
+  while hardening and adds no schema/endpoint contract change.
+- Use the installed pytest fixture factories for a development-only foreground
+  validation harness. Its marked private DBs, synthetic media/cast/planning and
+  explicit mock35-day publication history cannot be confused with the real pilot.
+  No new production/test dependency was installed.
+- The owner selected recorded sources + mocked generation for24h. Count actual
+  active monotonic and UTC elapsed time, not fake days or downtime. Preserve the
+  interrupted five-minute preflight; restart final acceptance after scheduling
+  fixes with source hashes. Never label smoke/preflight as24h completion.
+- Keep Phase7 uncommitted until the final elapsed-time evidence is checked. The
+  owner authorized milestone commits, not fabricated acceptance or stretch work.
+
+
+## Owner update — commit implementation while soak continues (2026-11-07)
+
+The owner explicitly superseded the previous wait-to-commit boundary: commit
+through Phase7 now, then address any dry-run findings with separate bug-fix commits.
+Commit the verified implementation with the elapsed-time matrix still pending.
+Keep the existing foreground run and its source hashes unchanged; do not restart
+it, enable live uploads, start services or begin stretch work.

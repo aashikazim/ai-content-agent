@@ -322,3 +322,36 @@ def test_invalid_episode_number_cannot_leave_an_orphan_intent(tmp_path,monkeypat
     with s.storage.connect() as c:
         assert c.execute('SELECT count(*) FROM automation_episode_runs').fetchone()[0]==0
         assert c.execute("SELECT count(*) FROM app_work_queue WHERE target_id LIKE 'episode:%'").fetchone()[0]==0
+
+
+
+def test_buffer_warms_before_series_start_without_advancing_publish_slots(tmp_path,monkeypatch):
+    s,identifier,clock=setup(tmp_path,monkeypatch)
+    start=__import__('datetime').date(2026,11,11)
+    with s.storage.connect() as c:c.execute('UPDATE series SET start_date=? WHERE series_id=?',(start.isoformat(),identifier))
+    # Three-day buffer lead: generation is allowed, publication remains future.
+    queued=s.tick()['queued'];assert len(queued)==1
+    row=s.get(queued[0]);assert row['ep_no']==1
+    from app.automation.governor import Governor
+    gov=Governor(s.storage.db_path,s.settings,clock=clock)
+    with s.storage.connect() as c:planned=c.execute('SELECT planned_publish_at FROM series_episodes WHERE series_id=? AND ep_no=1',(identifier,)).fetchone()[0]
+    assert planned=='2026-11-12T00:00:00+00:00'
+    assert gov.due_slot({'planned_at':planned}) is None
+
+
+def test_buffer_does_not_generate_before_the_configured_lead(tmp_path,monkeypatch):
+    s,identifier,clock=setup(tmp_path,monkeypatch)
+    with s.storage.connect() as c:c.execute("UPDATE series SET start_date='2026-11-12' WHERE series_id=?",(identifier,))
+    assert s.tick()['queued']==[]
+
+
+
+def test_episode_slots_are_persisted_once_and_dst_uses_local_wall_time(tmp_path,monkeypatch):
+    s,identifier,clock=setup(tmp_path,monkeypatch)
+    with s.storage.connect() as c:c.execute("UPDATE series SET start_date='2026-10-31' WHERE series_id=?",(identifier,))
+    s.enqueue(identifier,1,confirmed=True)
+    with s.storage.connect() as c:slots=[r[0] for r in c.execute('SELECT planned_publish_at FROM series_episodes WHERE series_id=? ORDER BY ep_no',(identifier,))]
+    assert slots[0]=='2026-10-31T23:00:00+00:00' and slots[1]=='2026-11-02T00:00:00+00:00'
+    s.settings.config.lanes['story_series'].publish_slot='20:00'
+    s.tick()
+    with s.storage.connect() as c:assert slots==[r[0] for r in c.execute('SELECT planned_publish_at FROM series_episodes WHERE series_id=? ORDER BY ep_no',(identifier,))]

@@ -1,5 +1,5 @@
 [Unit]
-Description=AI Content Agent optional generation scheduler
+Description=AI Content Agent single scheduler with optional Director and Governor
 After=ai-content-agent-api.service
 
 [Service]
@@ -14,3 +14,4 @@ NoNewPrivileges=true
 
 [Install]
 WantedBy=default.target
+Alias=ai-content-agent-director.service
