@@ -31,7 +31,7 @@ class WorkQueue:
         finally:conn.close()
 
     def enqueue(self,kind,target_id,*,dispatch_key=None):
-        if kind not in ('job','script','tool'):raise ValueError('Only generation jobs and script drafts can be queued')
+        if kind not in ('job','script','tool','automation'):raise ValueError('Only generation jobs and script drafts can be queued')
         if dispatch_key:target_id=str(target_id)+'@'+str(dispatch_key)
         identifier=str(uuid4());now=int(time.time())
         with self.connect() as conn:

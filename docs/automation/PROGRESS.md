@@ -1,5 +1,14 @@
 # Automation implementation progress
 
+## CURRENT RESUME STATE
+
+Phase 2 committed **7f0c1d9**. Phase 3 complete; all five private pilot outputs
+passed technical checks and await human quality review. No approval or publishing.
+Phase 3 commit pending, then implement Phase 4, run one local 30-episode planning
+request, commit Phase 4 and stop. Never relaunch the completed pilot.
+
+Historical phase checkpoints follow; later entries supersede older STOP/pending notes.
+
 ## Phase 1 — orientation and foundation (2026-11-06)
 
 Status: **Phase 1 complete and verified. STOPPED awaiting owner approval.**
@@ -256,3 +265,176 @@ those quality-pending jobs; never fake the three human confirmations.
   service/scheduler activation. GDELT availability remains best-effort/unverified.
 - Owner authorized committing this milestone to main, then Phase 3. Next work is
   local Shorts recipes/queue/forecast/report/UI and private five-Short validation.
+
+
+## Phase 3 — Daily Shorts (2026-11-06, implementation verified; real run pending)
+
+- Phase 2 committed as **7f0c1d9**. Owner authorized continuing through Phase 4.
+- Added category briefs, bounded local JSON beat planning/compilation, private
+  received-output diagnostics, existing script/quote/LangGraph production reuse,
+  atomic daily intents and immutable attempts, serial generation-only durable queue
+  dispatch, one-backup substitution and uncertain-outcome holds. No human quality
+  confirmations or uploads are called. Unsupported image/Wan daily recipes fail
+  closed; existing Local Video Studio functionality is preserved.
+- Added seeded-versus-measured GPU rates, DST-aware capacity forecasts, configurable
+  degradation, remaining-capacity checks, per-job stage/wait measurements and reports.
+- New Automation React page previews/queues/polls days, exposes forecasts/previews and
+  reuses existing CloudProduction for the human quality handoff. API additions do not
+  alter existing endpoint contracts. Read-only day/report/forecast routes do not
+  initialize a missing database. Existing worker gains only a generation handler.
+- Latest focused verification: **88 passed in 18.18s**, including seven distinct
+  successful simulated days/35 fake productions, duplicate replay, bounded failure
+  substitution/uncertain holds, auth/CSRF, real 30s CPU FFmpeg assembly with mocked
+  neural inference, and proof no automatic human-quality handoff occurred.
+- Frontend **69 tests passed**, build passed (636ms at latest checkpoint).
+- Full Python regression running: /tmp/automation-phase3-full.log, session92561.
+  Wait for it before starting the real five-Short batch. No real model inference has
+  occurred in Phase 3 yet; only read-only Ollama metadata confirmed qwen3:8b installed.
+- Final schema-copy verification: private phase3-schema-final-20261106 directory,
+  14 new tables, 3 initializations, original40tables/1762rows preserved, integrity ok.
+  Never migrate the live DB as part of validation.
+
+### Planned single hardware pilot (recorded before launch)
+
+- New private root data/automation/validation/shorts-20261106. Copy Phase 2 validation
+  DB using SQLite backup; do not fetch YouTube again or change the live application DB.
+- Private pilot.yaml freezes all five recipes at **30s** (a permitted first pilot;
+  shipped normal defaults remain45/30s), LTX text mode, Piper and ASR. Provider cost0.
+- Explicit manual immediate/overnight-style run, not a timed scheduler. Bounded
+  application_worker --drain consumes one generation-only day request and exits.
+- Preserve actual day/run/job/script/production/generation IDs and all original files.
+  Technical successes remain awaiting_quality_review, pending owner inspection.
+- After completion: measure neural stage/wait/wall seconds from saved worker records,
+  verify final video/audio/decode, replay the same plan without executing new work,
+  compare job/script/shot/generation counts, record exact evidence, then commit Phase3.
+- If interrupted, inspect current process/queue/day/attempt IDs and private worker
+  logs first. Never rerun the hardware batch or reset a claim blindly.
+
+Phase 4 next (only after Phase3 verified/committed): local 3-premise planning, bible
+with 2–3 actors and thread ledger, 30-episode structured outlines with bounded
+validation feedback, immutable planning receipts, manual cast activation gate,
+outline-edit API and React hook grid. Generate one real local outline, display all
+30 hooks and actual repair diagnostics, commit, then stop. No episode rendering,
+Governor, new-series lifecycle or publishing in Phase4.
+
+
+Phase 3 final pre-hardware checkpoint:
+- Final focused combined suite88passed18.18s; final Shorts-only10passed13.94s after
+  exact request beat-count schema binding. Full suite still running in session92561;
+  log /tmp/automation-phase3-full.log. Frontend69passed1.92s and final build636ms.
+- Private pilot prepared at data/automation/validation/shorts-20261106; validation.db
+  is a SQLite backup of Phase2's cached signals, pilot.yaml freezes five30s recipes,
+  preflight.json confirms installed LTX runtime and Piper profile without inference.
+  prepared.json says prepared_not_started. DO NOT recreate this directory or fetch
+  YouTube again. No generation IDs exist yet at this checkpoint.
+- Actual launch must set only per-process env DATABASE_PATH, AUTOMATION_ENABLED, AUTOMATION_LANES_FILE and AUTOMATION_DATA_DIR
+  plus CONTENT_PLANS_DIR/CLOUD_VIDEOS_DIR/CHARACTER_REFERENCES_DIR/DRIVING_REFERENCES_DIR
+  to this pilot's private roots; keep shared LOCAL_CINEMATIC_ROOT/checkpoints intact.
+  DURABLE_WORKERS=false launches one bounded drainer, not a systemd service.
+
+Phase4 design notes for resume (not implemented): use existing localJSONPlanner and
+common durable automation handler. Premise agent returns3 original candidates,
+bible agent defines2–3 actors/locations/thread payoff ledger, outline agent writes
+30 episodes in bounded chunks with structural validation feedback and private
+receipts. Validate hooks1–29, finale closure, act days1–8/9–22/23–29/30, previous-hook
+acknowledgment, actor intro/removal, exact thread payoff days and planned300–600s
+runtimes. Cast linking must use a hash-verified existing owner-approved package
+matching bible IDs; only an admin-confirmed action activates the series. Episode
+edits validate the entire outline and use expected revision timestamps. API/React
+provide30-hook grid, validation feedback, cast selection and outline editing. A real
+local outline stays awaiting_cast, never auto-approved; no episodes rendered inPhase4.
+
+
+## Phase 3 hardware batch launched (single run)
+- Full Python regression passed696tests619.24s; frontend69tests/build passed.
+- Real pilot launched via /tmp/launch_auto_pilot.py; log /tmp/automation-phase3-real.log.
+- Private root data/automation/validation/shorts-20261106. prepared.json now says
+  launched. NEVER rerun the launcher; it refuses if already launched. Inspect
+  validation.db / launch.json / automation/worker-logs and existing saved task IDs.
+- CLI --run --wait enqueues one bounded day request; child worker consumes existing
+  durable queue, serializing5Shorts and neural stages. No scheduler/services started.
+- Initial execution session will be recorded with actual run/job/generation IDs below.
+
+Hardware observation1:
+- CLI execution session40449; dayrun269492ad-7eaa-58da-bf74-aaae5c96b432 is running.
+- Slot1 scriptbfb71e79-5296-4a6b-9477-52ba303dbe19 is running; no production/job ID yet.
+- Slots2–5 remain planned, no models submitted for them. Preserve this database and
+  all IDs; do not re-run the launcher or submit a new day to inspect progress.
+
+Hardware observation2 (existing IDs only):
+- Slot1 scriptbfb71e79-5296-4a6b-9477-52ba303dbe19 completed; production
+  df26c15f-9f60-4079-8ef7-2f0677db9820, jobb1111575-4b10-436e-ac2b-1c28463b8554.
+- Three10s LTX IDs persisted: 0f44c602-5c27-4cb0-907c-a3febd19e512 (ltx_generation),
+  77aeaa45-b4e2-40fb-9f90-197968db270c and e9fa085b-a040-41f3-88c7-fea726131b98
+  (waiting_for_gpu). Slot2–5 still planned/unsubmitted. No retry/restart.
+- Stage timing is actual model worker data. Summed queue wait overlaps between
+  queued shots and must not be added to neural time to infer wall time.
+
+Hardware observation3:
+- Slot1 technical-ready and awaiting_quality_review; finalduration30.046s,
+  measured721.33s LTX stages,777.19s wall, aggregate shotwait821.94s (overlapping,
+  not additive to wall), peakCUDA7928.47MiB per shot. No approval/publication.
+- Third generatione9fa085b-a040-41f3-88c7-fea726131b98 completed206.43s LTX;
+  first/second288.87s/226.03s. Visual diagnostic first-two-shots.jpg inspected: real
+  outdoor rider/water footage at1s/7s, not textcard fallback; not full-film quality certification.
+- Slot2 script768f2084-32c0-4621-b202-2a719cf61f48; production
+  1740ce90-e289-4e6e-b00f-130f048a15e1; joba057f744-7299-4cd7-a306-4fdb149a4eeb.
+  Generation IDs7db716d4-c596-4b7d-936b-188e01a26389,
+  b593ea40-7c66-4734-9207-7b612ba3ea11,ceb08915-c657-4b43-87d7-fa32f4f3df8a.
+- Latest full IDs/status snapshots: pilot/latest-observation.json. No retry/substitution yet.
+
+Phase3 UI refinement while GPU batch runs (no backend generation changes):
+- Matched actual generation-section/grid/action/notice classes after checking CSS,
+  rather than relying on undefined form-grid/panel-heading classes. Existing styles
+  untouched. Added optional CloudProduction.productionId for direct archived
+  inspection; all old callers retain default behavior. Quality checkboxes reset
+  when changing production; ASR/aligned caption descriptions reflect saved mode.
+- Latest frontend suite70passed and build944ms; new regression proves archive fetch
+  opens quality preview without generation/approval/publishing requests.
+- Guarded Shorts tests10passed14.85s with real Ollama/HTTP/local GPU submissions
+  explicitly forbidden in pytest. Existing full696passed remains recorded.
+
+Hardware observation4: two completed Shorts, exact measured rows:
+- {"job_id": "b1111575-4b10-436e-ac2b-1c28463b8554", "video_seconds": 30.046, "neural_seconds": 721.33, "queue_seconds": 821.94, "wall_seconds": 777.1905377559597}
+- {"job_id": "a057f744-7299-4cd7-a306-4fdb149a4eeb", "video_seconds": 30.046, "neural_seconds": 579.79, "queue_seconds": 679.11, "wall_seconds": 641.423900244059}
+- Slot3 currently linked: {"daily_plan_id": "0ff40104-8091-5ef9-aa37-9d634be225be", "attempt_no": 0, "script_attempt_id": "3f80b135-5f1b-4fb4-8660-49e10386c2a6", "production_id": "925af1f3-fcc5-41be-9086-b1b31b5f63fa", "job_id": "0add5110-17ea-4598-b358-df2722ff35d5", "status": "starting", "error": null}
+- Model pipeline source unchanged during the batch; only frontend inspection/CSS fixes were made.
+
+## Phase 3 final validation — 2026-11-07
+
+The single real five-Short batch completed using Ollama qwen3:8b, LTX-2.5,
+Piper narration, ASR captions and FFmpeg. Private evidence is under
+`data/automation/validation/shorts-20261106` (ignored), database `validation.db`.
+No live application DB migration, services, schedulers, paid calls or uploads.
+
+| Slot | Job | Video seconds | LTX seconds | End-to-end seconds |
+|---|---|---:|---:|---:|
+| 1 | b1111575-4b10-436e-ac2b-1c28463b8554 | 30.046 | 721.33 | 777.19 |
+| 2 | a057f744-7299-4cd7-a306-4fdb149a4eeb | 30.046 | 579.79 | 641.42 |
+| 3 | 0add5110-17ea-4598-b358-df2722ff35d5 | 30.046 | 598.33 | 655.61 |
+| 4 | 8e360dae-d667-4236-8a12-d02de45fbf53 | 30.046 | 558.88 | 615.50 |
+| 5 | 67cef8c7-63da-4390-911a-c7e4ba25729e | 30.046 | 465.34 | 528.31 |
+
+All 15 original shots completed; no backup substitution. All five MP4 files have
+H.264 720x1280 24fps video, AAC audio and technical_passed=true. Human quality
+confirmations remain unset: actual jobs are `awaiting_quality_review`, not approved
+or automatically forwarded past that gate. The private batch is not injected into
+the main application's Review database. Open the private outputs for inspection;
+normal app runs expose the existing quality-inspection action in Automation.
+
+Measured aggregate LTX rate **19.4613 seconds per video second**, used by GPUPlanner
+instead of its labelled seed. Shot queue waits overlap and must not be added to
+neural time as an elapsed-time estimate. The pilot used 30s recipes for all slots;
+shipping defaults remain 45s/30s. This was immediate bounded overnight-style work,
+not an installed or tested nightly scheduler.
+
+Replaying enqueue_day for the same date/config made no changes: five slots,
+five script attempts, five productions, fifteen shots, five jobs, one queue intent;
+all row contents and generation IDs identical. Proof: idempotency-verification.json.
+Final file probes/hashes: final-verification.json; measurements: validation.db.
+
+Verification: full Python **696 passed in 619.24s**, versus original623; guarded
+Shorts tests **10 passed in 14.85s** (real HTTP/Ollama/submit forbidden); combined
+automation/release targeted **88 passed in 18.18s**. Latest frontend **70 passed**,
+production build **690ms**, versus original66. No dependencies installed.
+Phase 4 is next; episode rendering/lifecycle, Governor and scheduling remain deferred.

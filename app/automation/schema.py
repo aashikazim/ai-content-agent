@@ -95,3 +95,33 @@ AUTOMATION_TABLES: frozenset[str] = frozenset({
     "lane_settings", "automation_events", "standing_authorizations", "governor_state",
     "automation_idempotency",
 })
+
+
+# Phase 3: durable day intent, immutable slot attempts, measured capacity.
+SCHEMA_STATEMENTS += (
+    """CREATE TABLE IF NOT EXISTS automation_day_runs (
+        run_id TEXT PRIMARY KEY, plan_date TEXT NOT NULL, lane TEXT NOT NULL,
+        request_json TEXT NOT NULL, backup_topics_json TEXT NOT NULL, used_backups_json TEXT NOT NULL DEFAULT '[]',
+        forecast_json TEXT NOT NULL, actor TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'queued',
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE(plan_date,lane))""",
+    """CREATE TABLE IF NOT EXISTS automation_slot_attempts (
+        daily_plan_id TEXT NOT NULL REFERENCES daily_plans(daily_plan_id), attempt_no INTEGER NOT NULL CHECK(attempt_no IN (0,1)),
+        topic_json TEXT NOT NULL, script_attempt_id TEXT, production_id TEXT, job_id TEXT,
+        status TEXT NOT NULL, error TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+        PRIMARY KEY(daily_plan_id,attempt_no))""",
+    """CREATE TABLE IF NOT EXISTS automation_gpu_measurements (
+        measurement_id TEXT PRIMARY KEY, job_id TEXT UNIQUE, model TEXT NOT NULL, mode TEXT NOT NULL,
+        video_seconds REAL NOT NULL CHECK(video_seconds>0), neural_seconds REAL NOT NULL CHECK(neural_seconds>0),
+        queue_seconds REAL NOT NULL DEFAULT 0 CHECK(queue_seconds>=0), wall_seconds REAL,
+        is_seed INTEGER NOT NULL DEFAULT 0 CHECK(is_seed IN (0,1)),
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL)""",
+)
+AUTOMATION_TABLES |= frozenset({'automation_day_runs','automation_slot_attempts','automation_gpu_measurements'})
+
+SCHEMA_STATEMENTS += (
+    """CREATE TABLE IF NOT EXISTS automation_short_receipts (
+        daily_plan_id TEXT NOT NULL, attempt_no INTEGER NOT NULL, receipt_no INTEGER NOT NULL,
+        body_json TEXT NOT NULL, errors_json TEXT NOT NULL, created_at TEXT NOT NULL,updated_at TEXT NOT NULL,
+        PRIMARY KEY(daily_plan_id,attempt_no,receipt_no))""",
+)
+AUTOMATION_TABLES |= frozenset({'automation_short_receipts'})

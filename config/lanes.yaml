@@ -16,10 +16,10 @@ lanes:
     publish_slots: ["09:00", "12:30", "15:00", "18:00", "20:30"]
     cooldown_days: 14
     recipes:
-      comedy: {style: comedy_satire, duration_s: 45}
-      politics: {style: news_explainer, duration_s: 45, source_bundle: auto}
-      drama: {style: realistic_drama, duration_s: 45}
-      wildcard: {style: comedy_satire, duration_s: 30}
+      comedy: {style: comedy_satire, duration_s: 45, speech_profile_id: piper-en-us-ljspeech-high}
+      politics: {style: news_explainer, duration_s: 45, source_bundle: auto, speech_profile_id: piper-en-us-ljspeech-high}
+      drama: {style: realistic_drama, duration_s: 45, speech_profile_id: piper-en-us-ljspeech-high}
+      wildcard: {style: comedy_satire, duration_s: 30, speech_profile_id: piper-en-us-ljspeech-high}
   story_series:
     kind: serialized_story
     enabled: true

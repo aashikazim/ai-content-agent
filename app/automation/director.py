@@ -53,6 +53,9 @@ class Director:
             results.append(LanePreview(lane_id, status, description, items))
         return DayPreview(day, timezone_name, tuple(results))
 
-    def run_day(self, plan_date: date | None = None) -> None:
+    def run_day(self, plan_date: date | None = None, *, producer=None, lane_id: str="shorts_daily", confirmed: bool=False):
         """Fail closed even if env flags are enabled; dispatch belongs to Phase 3."""
-        raise NotImplementedError("Phase 1 does not dispatch generation, approve or publish")
+        if not self.settings.enabled or producer is None:
+            raise NotImplementedError("Director does not dispatch without enabled automation and an explicit producer")
+        day=plan_date or local_day(self.clock,self.settings.config.timezone)
+        return producer.enqueue_day(day,lane_id,confirmed=confirmed)

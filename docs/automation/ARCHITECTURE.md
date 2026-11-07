@@ -2,7 +2,9 @@
 
 Scope: root `AGENTS_AUTOMATION.md`, dated implementation 2026-11-06. This is an
 additive layer on the existing single-host application, not a replacement workflow.
-Only Phase 1 is implemented. Phases 2–7 require separate owner instructions.
+Phase 1 is complete. Phase 2 is committed as 7f0c1d9. Phase 3 generation/queue/UI
+code is tested with mocked inference; its private five-Short hardware pilot is
+pending. See PROGRESS.md for current measured acceptance and phase boundaries.
 
 ## Existing implementation and reuse boundaries
 
@@ -24,7 +26,7 @@ Only Phase 1 is implemented. Phases 2–7 require separate owner instructions.
 Names without a path prefix in this table are under `app/services/`, except the
 root entry points and the `app/workflows/` / `app/models/` modules named above.
 
-## Target flow and current boundary
+## Target flow and original foundation boundary
 
 ```mermaid
 flowchart TD
@@ -45,7 +47,7 @@ flowchart TD
     V -. future .-> DB
 ```
 
-**Implemented now:** configuration, Clock, schema/storage, events, idempotency,
+**At Phase 1 delivery:** configuration, Clock, schema/storage, events, idempotency,
 Lane protocol, inert Director and offline inspection. Arrows into production,
 queues, review, Governor, scheduler, APIs and UI are future integration, not working
 automation. Importing the new package performs no I/O. Constructing Director does
@@ -143,3 +145,28 @@ and GPU forecasting, Phases 4–5 story planning/production, Phase 6 Governor/co
 scheduler/analytics, Phase 7 operations/soak/stretches. No later-phase work is claimed
 complete here. Real hardware and current platform/account behavior remain unmeasured
 by this foundation; no GPU or platform benchmark was run.
+
+
+## Phase 2–3 integration update
+
+TrendCollector wraps existing discovery/research; TopicSelector reads snapshots and
+history without network or schema writes. New authenticated automation routes are
+registered in the existing server. Reads do not construct mutating storage.
+
+ShortsService atomically freezes a day/slots/topics/recipes/backups and one durable
+queue intent. The application worker adds a generation-only automation handler.
+Each original local script is stored by ScriptGenerationService, then its zero-cost
+video quote is consumed by CloudVideoService. Existing ContentWorkflow skips
+discovery/planning and submits the authorized local batch. The existing one-batch
+guard is retained; day slots run serially, never competing model loads. Ollama
+requests use the existing cinematic GPU lock and explicit unload acknowledgment.
+
+New tables automation_day_runs, automation_slot_attempts, automation_gpu_measurements
+and automation_short_receipts are additive. New mutating entry points back up an
+existing pre-upgrade DB before initializing missing automation tables. Reports and
+validation artifacts are private; GPU seeds and measured runs are distinct.
+
+The Automation page reuses existing components/styles and human quality controls.
+Technical output waits at awaiting_quality_review; no automatic human confirmations,
+approval or publication. Director run_day requires enabled configuration and an
+explicit generation producer. Scheduler and Governor wiring remain Phase 6 work.

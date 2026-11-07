@@ -2,6 +2,15 @@
 
 ## Daily automation foundation — 2026-11-06
 
+Phase 3 adds the **Automation** daily-plan page, original local Shorts recipes,
+serial durable generation, GPU capacity forecasts, bounded backup substitution,
+per-job timing and private daily reports. Finished footage awaits human quality
+inspection; it is never automatically approved or published. Automation remains
+disabled by default. See [Daily Shorts operations](docs/automation/SHORTS.md) and
+[verification/resume status](docs/automation/PROGRESS.md); real pilot results are
+recorded there separately from mocked tests.
+
+
 Phase 2 adds explicit trend collection and read-only topic preview. YouTube uses
 existing discovery/ranking; GDELT, Wikimedia and Hacker News provide additional
 signals. Optional Google Trends/Reddit default disabled. Topic clustering, cooldown,
@@ -16,8 +25,9 @@ Phase 1 of the opt-in automation layer adds validated lane configuration, an
 injectable Clock, additive SQLite schema, append-only audit events, persistent
 idempotency helpers and a planning-only Lane/Director skeleton. No automation runs
 on startup; existing creation, review, publishing, APIs and dashboards are unchanged.
-Five daily Shorts and a 30-day series of 5–10-minute episodes are configuration
-targets, **not yet implemented daily production**. Lane C ships disabled.
+Five Shorts can be queued as an explicit local batch. The 30-day series of
+5–10-minute episodes remains a configuration/planning target until episode
+production is implemented. Automatic scheduling is not wired; Lane C ships disabled.
 
 ```bash
 # Offline inspection: no database writes, providers, GPU work or services.
@@ -740,7 +750,7 @@ The table records the original Days1–7 foundation and its current status. Late
 - **Manual review and separate publishing remain the current behavior.** A future
   opt-in automation Governor is specified for `auto_with_gates`; only that separate
   component may evaluate gates and invoke the existing approval/publication paths.
-  It is not implemented in Phase 1. Director and generation workers never approve
+  It is not implemented through Phase 3. Director and generation workers never approve
   or publish. The default remains manual; future Governor mode defaults to dry-run.
 - **Separate privileges.** Generation, review, and publishing use separate API credentials where supported.
 - **No duplicate blind uploads.** If a platform upload's outcome is uncertain, reconcile it before authorizing a new attempt.

@@ -79,7 +79,7 @@ function ShotCard({ shot, production, request, refresh, onQuote, disabled, revie
   </article>;
 }
 
-export default function CloudProduction({ request, editModels=[], scope='all', scriptAttemptId }) {
+export default function CloudProduction({ request, editModels=[], scope='all', scriptAttemptId, productionId }) {
   const [scripts, setScripts] = useState([]);
   const [references, setReferences] = useState([]);
   const [productions, setProductions] = useState([]);
@@ -114,10 +114,21 @@ export default function CloudProduction({ request, editModels=[], scope='all', s
     const [drafts, refs, videos] = await Promise.all([request('/generation/scripts'), request('/generation/references'), request('/generation/videos')]);
     setScripts((drafts.attempts || []).filter(item => inScope(item) && !item.film_parent_attempt_id && item.status === 'completed' && item.production_plan?.shots?.length));
     setReferences(refs.references || []); setProductions((videos.productions || []).filter(inScope));
-    if (current) { const value = (videos.productions || []).find(item => item.production_id === current.production_id); if (value) setCurrent(value); }
+    if (current && (!productionId || current.production_id === productionId)) { const value = (videos.productions || []).find(item => item.production_id === current.production_id); if (value) setCurrent(value); }
   }
   useEffect(() => { load().catch(err => setError(err.message)); }, [request, scope, scriptAttemptId]);
   useEffect(() => { if (scriptAttemptId) setSelectedScript(scriptAttemptId); }, [scriptAttemptId]);
+  useEffect(() => {
+    if (!productionId) return;
+    let cancelled=false;
+    request(`/generation/videos/${productionId}`).then(value=>{
+      if(cancelled) return;
+      if(!inScope(value)) throw new Error('This production is outside the selected workspace.');
+      setCurrent(value);if(value.script_attempt_id)setSelectedScript(value.script_attempt_id);
+    }).catch(err=>{if(!cancelled)setError(err.message);});
+    return ()=>{cancelled=true;};
+  },[productionId,request,scope]);
+  useEffect(()=>setChecks([false,false,false]),[current?.production_id]);
   useEffect(() => { setQuote(null); setConfirmed(false); }, [selectedScript, JSON.stringify(referenceIds), startFrame, JSON.stringify(shotFrames), JSON.stringify(sceneFrames), JSON.stringify(sceneIdentities), JSON.stringify(drivers)]);
   useEffect(() => { setStartFrame(''); setShotFrames({}); setSceneFrames({}); setSceneIdentities({}); setDrivers({}); }, [selectedScript]);
   useEffect(() => {
@@ -202,7 +213,7 @@ export default function CloudProduction({ request, editModels=[], scope='all', s
       {current.shots.some(item => item.status === 'queued') && <div><label className="checkbox-label"><input type="checkbox" checked={resumeConfirmed} onChange={event => setResumeConfirmed(event.target.checked)} /><span>Continue only previously authorized, never-submitted shots after inspecting this batch.</span></label><button type="button" className="button subtle" disabled={!resumeConfirmed || busy} onClick={() => act(async () => { await post(request, `/generation/videos/${current.production_id}/continue`, { confirmed:true }); setResumeConfirmed(false); await refresh(); })}>Continue unsubmitted authorized shots</button><button type="button" className="button subtle" disabled={busy} onClick={() => act(async () => { setCurrent(await post(request, `/generation/videos/${current.production_id}/discard-queued`, { confirmed:true })); setResumeConfirmed(false); })}>Discard never-submitted shots</button></div>}
       {current.production_plan.content_plan.scenes?.length > 12 && <label>Scene to inspect<select value={sceneFilter} onChange={event=>setSceneFilter(event.target.value)}><option value="all">All scenes</option>{current.production_plan.content_plan.scenes.map(scene=><option key={scene.scene_number} value={String(scene.scene_number)}>Scene {scene.scene_number}</option>)}</select></label>}
       <div className="cloud-shots">{current.shots.filter(shot=>sceneFilter==='all' || String(shot.scene_number)===sceneFilter).map(shot => <ShotCard key={shot.attempt_id} shot={shot} production={current} request={request} refresh={refresh} onQuote={setAuthorization} editModels={editModels} reviewDisabled={busy || uncertain || current.status === 'pending_review'} disabled={busy || active(current) || uncertain || current.status === 'pending_review'} />)}</div>
-      {current.status === 'technical_ready' && <div className="generation-paid-authorization"><h3>Check the assembled video</h3><video controls preload="metadata" src={`/api/v1/jobs/${current.job_id}/video`} aria-label="Assembled video quality preview" /><p>Caption times are estimated phrase timings, not speech-forced alignment. Inspect every selected shot, voice and factual claim before review.</p>{['I checked character appearance, clothing, actions and voice continuity.','I checked spoken words, caption timing, readability and audio synchronization.','I checked factual claims, fiction/satire labeling, reference rights and provider media terms.'].map((text,index) => <label className="checkbox-label" key={text}><input type="checkbox" checked={checks[index]} onChange={event => setChecks(previous => previous.map((value,i) => i === index ? event.target.checked : value))} /><span>{text}</span></label>)}<button type="button" className="button primary" disabled={!checks.every(Boolean) || busy} onClick={() => act(async () => { setCurrent(await post(request, `/generation/videos/${current.production_id}/review`, { continuity_confirmed:checks[0], captions_confirmed:checks[1], rights_confirmed:checks[2] })); setChecks([false,false,false]); })}>Send video to manual review</button></div>}
+      {current.status === 'technical_ready' && <div className="generation-paid-authorization"><h3>Check the assembled video</h3><video controls preload="metadata" src={`/api/v1/jobs/${current.job_id}/video`} aria-label="Assembled video quality preview" /><p>{current.configuration?.captions==='asr' ? 'Captions use recognized-word timings. Inspect transcription, speech accuracy and synchronization before review.' : current.configuration?.captions==='aligned' ? 'Captions use forced transcript timing. Inspect the separate ASR/WER report and alignment before review.' : 'Caption times are estimated phrase timings, not speech-forced alignment. Inspect every selected shot, voice and factual claim before review.'}</p>{['I checked character appearance, clothing, actions and voice continuity.','I checked spoken words, caption timing, readability and audio synchronization.','I checked factual claims, fiction/satire labeling, reference rights and provider media terms.'].map((text,index) => <label className="checkbox-label" key={text}><input type="checkbox" checked={checks[index]} onChange={event => setChecks(previous => previous.map((value,i) => i === index ? event.target.checked : value))} /><span>{text}</span></label>)}<button type="button" className="button primary" disabled={!checks.every(Boolean) || busy} onClick={() => act(async () => { setCurrent(await post(request, `/generation/videos/${current.production_id}/review`, { continuity_confirmed:checks[0], captions_confirmed:checks[1], rights_confirmed:checks[2] })); setChecks([false,false,false]); })}>Send video to manual review</button></div>}
       <details><summary>Generation events</summary>{current.events?.map(event => <p key={event.event_id}>{event.event.replaceAll('_',' ')} · {event.message}</p>)}</details>
     </div>}
   </section>;

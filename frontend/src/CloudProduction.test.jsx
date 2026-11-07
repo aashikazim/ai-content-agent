@@ -283,3 +283,18 @@ it('shows a failed production diagnostic and safely refreshes without paid gener
   expect(paid(request)).toHaveLength(0);
   expect(request.mock.calls.some(([path])=>path.endsWith('/review') || path.includes('publish'))).toBe(false);
 });
+
+it('opens an archived automation production directly without a new generation request',async()=>{
+ const request=vi.fn(async(path,options)=>{
+  if(path==='/generation/scripts')return {attempts:[]};
+  if(path==='/generation/references')return {references:[]};
+  if(path==='/generation/videos')return {productions:[]};
+  if(path===`/generation/videos/${identifier}`)return {...production,script_attempt_id:scriptId,configuration:{video_provider:'local_cinematic',video_model:'ltx-2.5',captions:'asr'}};
+  throw new Error(path);
+ });
+ render(<CloudProduction request={request} scope="local" scriptAttemptId={scriptId} productionId={identifier}/>);
+ await screen.findByLabelText('Assembled video quality preview');
+ expect(screen.getByRole('button',{name:'Send video to manual review'})).toBeDisabled();
+ expect(screen.getByText(/Captions use recognized-word timings/)).toBeInTheDocument();
+ expect(request.mock.calls.every(([,options])=>!options?.method)).toBe(true);
+});

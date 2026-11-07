@@ -2,6 +2,7 @@
 
 import os
 import re
+import string
 from decimal import Decimal
 from pathlib import Path
 from typing import Annotated, Literal, Mapping, Self
@@ -34,6 +35,7 @@ class NightlyWindow(ConfigModel):
 
 
 class GPUConfig(ConfigModel):
+    degradation_order: list[Literal['shorten_shorts','drop_wildcard','drop_lowest_priority']] = Field(default_factory=lambda:['shorten_shorts','drop_wildcard','drop_lowest_priority'])
     nightly_window: NightlyWindow = Field(default_factory=NightlyWindow)
     seed_seconds_per_video_second: dict[str, PositiveFloat] = Field(
         default_factory=lambda: {"ltx_t2v": 29.0, "ltx_i2v": 20.0}
@@ -60,9 +62,16 @@ class Recipe(ConfigModel):
     captions: Literal["asr", "aligned"] = "asr"
     cast_mode: Literal["none", "approved"] = "none"
     source_bundle: Literal["auto"] | None = None
+    speech_profile_id: str | None = Field(default=None,pattern=r"^[A-Za-z0-9_-]{1,80}$")
+    title_template: str = Field(default='{title}',min_length=1,max_length=200)
+    hashtag_templates: list[str] = Field(default_factory=lambda:['#Shorts','#{category}'],min_length=1,max_length=10)
 
     @model_validator(mode="after")
     def references_required(self) -> Self:
+        for template in [self.title_template,*self.hashtag_templates]:
+            for _,field,spec,conversion in string.Formatter().parse(template):
+                if field is not None and (field not in {'title','category'} or spec or conversion):
+                    raise ValueError('Templates support only plain title/category placeholders')
         if self.model != "ltx-2.5" and (self.input_mode != "image" or self.cast_mode != "approved"):
             raise ValueError("Wan/hybrid recipes require image input and approved cast")
         if self.narration == "character_tts" and self.cast_mode != "approved":

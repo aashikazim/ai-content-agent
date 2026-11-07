@@ -29,6 +29,8 @@ def main() -> None:
     action=parser.add_mutually_exclusive_group()
     action.add_argument('--collect-trends',action='store_true')
     action.add_argument('--preview',action='store_true')
+    action.add_argument('--run',action='store_true',help='Explicitly authorize local day generation')
+    parser.add_argument('--wait',action='store_true',help='Wait for this bounded validation day; does not start a service')
     parser.add_argument('--sources',nargs='+',default=None,help='Explicit collection source names')
     parser.add_argument('--output',type=Path,help='Private JSON result file')
     args=parser.parse_args();settings=load_settings(args.config)
@@ -36,7 +38,21 @@ def main() -> None:
         available=sources()
         names=args.sources or list(available)
         if any(n not in available for n in names):parser.error('Source is unknown or disabled')
+        from app.automation.shorts_service import backup_before_upgrade
+        backup_before_upgrade(args.database)
         result=TrendCollector(AutomationStorage(args.database),{n:available[n] for n in names},settings.trend_interval_hours).collect(args.region)
+    elif args.run:
+        from app.automation.shorts_service import ShortsService
+        from app.automation.clock import local_day,SystemClock
+        import time
+        service=ShortsService(args.database,settings)
+        day=args.plan_date or local_day(SystemClock(),settings.config.timezone)
+        result=service.enqueue_day(day,args.lane,confirmed=True,launch=True,region=args.region)
+        while args.wait and result['run']['status'] in {'queued','running'}:
+            time.sleep(20)
+            from app.automation.reports import read_day
+            result=read_day(args.database,day,args.lane)
+            logger.info('Day %s: %s',day,[(s['slot'],s['status']) for s in result['slots']])
     else:
         lane=settings.config.lanes.get(args.lane)
         if not isinstance(lane,ShortsLaneConfig):parser.error('Choose a topic Shorts lane')

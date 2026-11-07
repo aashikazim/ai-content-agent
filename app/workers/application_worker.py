@@ -12,6 +12,7 @@ def _consume():
     from app.api.routes import _execute_job_inline,_execute_script_inline
     from app.services.work_queue import WorkQueue
     from app.services.production_tools import ProductionTools
+    from app.automation.shorts_service import dispatch_automation
     import sys
     queue=WorkQueue();stop=threading.Event()
     for sig in (signal.SIGTERM,signal.SIGINT):signal.signal(sig,lambda *_:stop.set())
@@ -25,7 +26,7 @@ def _consume():
     threading.Thread(target=beat,daemon=True).start()
     try:
         while not stop.is_set():
-            if not queue.run_next({'job':_execute_job_inline,'script':_execute_script_inline,'tool':ProductionTools(queue.db_path).run}):
+            if not queue.run_next({'job':_execute_job_inline,'script':_execute_script_inline,'tool':ProductionTools(queue.db_path).run,'automation':dispatch_automation}):
                 if '--drain' in sys.argv:break
                 stop.wait(2)
     finally:
