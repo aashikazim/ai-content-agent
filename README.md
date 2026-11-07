@@ -1,5 +1,29 @@
 # AI Content Agent
 
+## Daily automation foundation — 2026-11-06
+
+Phase 1 of the opt-in automation layer adds validated lane configuration, an
+injectable Clock, additive SQLite schema, append-only audit events, persistent
+idempotency helpers and a planning-only Lane/Director skeleton. No automation runs
+on startup; existing creation, review, publishing, APIs and dashboards are unchanged.
+Five daily Shorts and a 30-day series of 5–10-minute episodes are configuration
+targets, **not yet implemented daily production**. Lane C ships disabled.
+
+```bash
+# Offline inspection: no database writes, providers, GPU work or services.
+.venv/bin/python -m app.automation --config config/lanes.yaml --describe
+.venv/bin/python -m pytest tests/test_automation_foundation.py -q
+```
+
+Director/Governor default disabled, lane approval modes default manual, and future
+Governor dry-run defaults true. No live-database migration is applied in this phase.
+Phase 1 verification: **675 Python tests passed** (baseline 623), **66 frontend
+tests passed** and the production build passed. All existing database tables/rows
+were preserved across three initializations of a private migration copy.
+See [architecture](docs/automation/ARCHITECTURE.md),
+[decisions](docs/automation/DECISIONS.md) and
+[actual verification and resume status](docs/automation/PROGRESS.md).
+
 ## Production completion update — 2026-11-05
 
 **Production tools** now adds isolated Piper neural narration, ASR word captions,
@@ -703,7 +727,11 @@ The table records the original Days1–7 foundation and its current status. Late
 
 ## Security and content policy
 
-- **Manual review is mandatory.** Automatically generated material must not be automatically published.
+- **Manual review and separate publishing remain the current behavior.** A future
+  opt-in automation Governor is specified for `auto_with_gates`; only that separate
+  component may evaluate gates and invoke the existing approval/publication paths.
+  It is not implemented in Phase 1. Director and generation workers never approve
+  or publish. The default remains manual; future Governor mode defaults to dry-run.
 - **Separate privileges.** Generation, review, and publishing use separate API credentials where supported.
 - **No duplicate blind uploads.** If a platform upload's outcome is uncertain, reconcile it before authorizing a new attempt.
 - **Private by default.** YouTube uploads default to `private` until manually changed through the platform's controls.
@@ -727,7 +755,13 @@ Commit/push only after reviewing the intended source/documentation changes. `.en
 
 ## Project direction
 
-The next development stage focuses on **content quality**, not additional publishing automation: better scene assets, natural narration, source-aware scripting, and regeneration controls inside the manual review dashboard. The intended workflow remains **automated creation → manual review → manual publishing → analytics**.
+Content-quality tools, narration, source-aware scripting and regeneration remain
+available. The new daily-automation roadmap extends them through generation-only
+lanes and, in a later phase, a separate opt-in Governor with technical/speech/caption/
+duplicate/ordering/platform gates, publish slots, caps, kill switch and reconciliation.
+The current implemented workflow remains **creation → manual review → separate
+manual publishing → analytics**. Phase 1 adds foundations only; no autonomous
+approval or publication capability is available yet.
 
 ### Historical provider verification
 

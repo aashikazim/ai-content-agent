@@ -1,0 +1,44 @@
+# Foundation only: no scheduler, generation or publishing wiring in Phase 1.
+# AUTOMATION_ENABLED=false, manual approval, and Governor dry-run remain defaults.
+timezone: America/New_York
+gpu:
+  nightly_window: {start: "00:30", end: "08:30"}
+  # Historical README seeds, NOT new hardware measurements.
+  seed_seconds_per_video_second: {ltx_t2v: 29, ltx_i2v: 20}
+lanes:
+  shorts_daily:
+    kind: topic_shorts
+    enabled: true
+    daily_count: 5
+    quotas: {comedy: 2, politics: 1, drama: 1, wildcard: 1}
+    approval_mode: manual
+    platforms: [youtube, facebook]
+    publish_slots: ["09:00", "12:30", "15:00", "18:00", "20:30"]
+    cooldown_days: 14
+    recipes:
+      comedy: {style: comedy_satire, duration_s: 45}
+      politics: {style: news_explainer, duration_s: 45, source_bundle: auto}
+      drama: {style: realistic_drama, duration_s: 45}
+      wildcard: {style: comedy_satire, duration_s: 30}
+  story_series:
+    kind: serialized_story
+    enabled: true
+    episodes_per_series: 30
+    # Newer owner request: 5–10 min, superseding the spec's 3–5 min example.
+    episode_duration_s: {min: 300, max: 600}
+    buffer_ahead_episodes: 3
+    approval_mode: manual
+    platforms: [youtube]
+    publish_slot: "19:00"
+    next_series_gap_days: 1
+    series_start_mode: manual_cast_approval
+    planner: {provider: ollama}
+    episode_render: {provider: local_cinematic, model: ltx-2.5, input_mode: image, continuity: connected}
+  lane_3:
+    kind: custom
+    enabled: false
+governor:
+  hold_rules: []
+  wer_max: 0.25
+  duplicate_window_days: 30
+  daily_publish_cap: {youtube: 10, facebook: 8}

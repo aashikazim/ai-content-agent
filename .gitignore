@@ -50,3 +50,6 @@ data/still_image_runtime/
 
 # Durable consumer lock (the database remains in its existing configured location)
 *.worker.lock
+
+# Private automation validation database copies and future operational reports.
+data/automation/
