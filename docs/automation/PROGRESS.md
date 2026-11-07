@@ -2,52 +2,37 @@
 
 ## CURRENT RESUME STATE
 
-Owner authorized Phases5–7 (2026-11-07), commits after each phase, no uploads or
-stretch work. Main HEAD75745c5; clean initial tree. Exact same source as last
-verified baseline738 Python607.10s /75 frontend3.43s/build1.53s; no claim of a new
-baseline run. Earlier full logs remain evidence. Existing handoff files untouched.
+Phase5 committed11dead8 on main. Phase6 implementation and verification complete; commit checkpoint below. Latest complete baseline757Python688.12s/77frontend2.31s.
+Phase6 targeted18passed10.07s; frontend79passed1.96s/build624ms. Full Python
+775passed686.54s, log /tmp/automation-phase6-final-python.log. Prior broad
+run221passed/1failed was an analytics-fixture expectation; corrected targetedcase
+passes. No production scoring math was changed. Phase7 not started.
 
-Phase5 WIP, uncommitted. Owner approved ALL SIX generated cast reference images
-and selected Tidal Echoes for the private240s episode. MainDB now has three newly
-owner-approved packages (backed up first):
-- Tidal Echoes:6cf9b34d-ffcb-4751-bbcb-6a9c5c13fe7b
-- Everyday Comedy:8ddfc36e-9760-4c38-aab1-7c78a278d00b
-- Coastal Adventure:ccddbef1-3abd-4186-813c-8541a5fb49ad
-Images/provenance/approval record:
-`data/automation/validation/cast-options-20261107/registered-packages.json`.
-No human approval of finished videos has been given.
+Owner inspected the real240s episode and explicitly confirmed continuity/captions/
+rights. Existing human quality flow accepted24 selected shots and moved job
+b512edc1-2f34-437e-aaa7-85c736901f42 to pending_review in PRIVATE validation DB:
+`data/automation/validation/episode-20261107-v2/validation/episode.db`.
+Production84adf95f-d492-42ed-bbf1-45449f1f52e4, run774fc942-fb20-50e8-b922-f50e6d69ca40.
+No content approval or publishing; zero publication rows. Do not rerun generation
+or /tmp/send_automation_episode_to_review.py. Evidence: manual-quality-acceptance.json,
+verification.json, EPISODE_VALIDATION.md. Duration240.086s,24shots, neural4828.8s,
+wall5248.59s. Final path/hash/tail in the report. The two-shot rejected framing probe
+is retained separately; no uncertain generation was retried.
 
-**Real corrected episode COMPLETE**, private root
-`data/automation/validation/episode-20261107-v2`, DB `validation/episode.db`.
-Run774fc942-fb20-50e8-b922-f50e6d69ca40, production84adf95f-d492-42ed-bbf1-45449f1f52e4,
-jobb512edc1-2f34-437e-aaa7-85c736901f42. DO NOT RELAUNCH/RESET CLAIMS.
-24/24 shots,240.086s,H2641280x720/24fps,AAC. Measured LTX stage4828.8s,
-render wall5248.59s; measurement stored privately. Replay changed no production,
-job,script,shot,run or measurement rows. All technical checks passed. Finished
-video remains awaiting_quality_review; owner continuity/captions/rights acceptance
-is pending. No approval/publication was fabricated. Exact MP4/hash and last30s:
-[EPISODE_VALIDATION.md](EPISODE_VALIDATION.md). verification.json stores evidence.
+Owner-approved cast IDs: Tidal Echoes6cf9b34d-ffcb-4751-bbcb-6a9c5c13fe7b,
+Comedy8ddfc36e-9760-4c38-aab1-7c78a278d00b,
+Adventureccddbef1-3abd-4186-813c-8541a5fb49ad. MainDB registry backed up first.
+No automation migrations applied to live DB. Phase6 copied migration21tables,
+legacy40tables/1771rows preserved, integrityok,3initializations.
+Private copy: data/automation/validation/phase6-schema-20261107.
+Seven-day evidence: data/automation/validation/phase6-governor-20261107/seven-day-decisions.json
+(14distinct dry-run PublishingService validations,zero duplicate calls/uploads/
+publication rows/real approvals). GPU calls and upload calls forbidden in tests.
 
-Initial probe preserved2 completed shots after detecting portrait center-cropping;
-22 NEVER-submitted reservations were cancelled. Corrected run reused the actual
-completed screenplay/state and original cast images with geometry-only landscape
-scene references. Blurred side-fill remains visible. This is not artistic QA.
-Known probe/recovery evidence remains under the private validation roots.
-
-Latest automation tests134passed80.41s; frontend77passed2.31s/build646ms.
-Final full Python regression: **757 passed in688.12s**, log
-`/tmp/automation-phase5-final-python.log`, frozen Phase5 backend. Compared with
-Phase4:738passed607.10s, +19 tests, zero regressions. Earlier749passed705.44s
-predates final geometry/lifecycle fixes and is not the final claim.
-Final copied migration:19 automation tables,3 initializations,40 legacy tables/
-1771 rows preserved,integrity ok. MainDB opened read-only, not automation-migrated.
-Copy: `data/automation/validation/phase5-schema-final-20261107`.
-Phase5 regression complete; commit, then Phase6. Acceptance item remains
-pending unless owner responds to the existing quality-inspection question.
-
-Owner chose RECORDED SOURCES + MOCKED GENERATION for the real24h Phase7 soak.
-Must still measure24 actual hours using bounded foreground harness, no service/
-APScheduler starts, no live uploads or paid calls. No Phase6/7 code started yet.
+Next: complete Phase6 full regression/docs/report/commit, then Phase7 hardening,
+35-day integration soak and REAL24h validation. Owner chose recorded sources and
+mocked generation for24h; still require24 actual elapsed hours, private paths,
+dry-run publishing, no service/APScheduler starts. No stretch authorized.
 
 Historical phase checkpoints follow; later entries supersede older STOP/pending notes.
 
@@ -774,3 +759,93 @@ Final Phase5 regression: **757 Python passed688.12s** (+19 vs738),
 **77 frontend passed2.31s** (+2 vs75); build646ms. `git diff --check` and
 compileall passed. Manual real-video acceptance remains the sole Phase5 pending
 verification item; no human confirmations were invented.
+
+
+## Phase 6 current work in progress
+
+New Governor/gates, quote-bound standing authorization accounting, feedback weights,
+generation-only runtime, aggregate daily report and React Governor panel are written.
+Existing cloud review validation is shared via a private helper; human endpoint
+contracts and event wording stay distinct. Scheduler registration extends the same
+BlockingScheduler; no process/service started. Automation routes remain admin/CSRF.
+Tests not yet run for Phase6; do not claim complete or enable live mode.
+Next: targeted Governor/gates/authorizations/runtime/API/frontend tests, fix failures,
+seven simulated dry-run days proof, copied migration, complete regression/docs/commit.
+Private real episode MUST stay awaiting_quality_review until owner confirmation.
+
+
+### Phase5 owner acceptance received
+
+Owner explicitly confirmed all3 finished-video quality checks. Existing
+accept_continuity on24 selected shots plus send_to_review transitioned the private
+validation job to pending_review. Content approval=false, publications=0.
+The previously recorded pending human acceptance is now resolved. No new render.
+
+
+### Phase6 verification checkpoint
+
+Targeted19Governor cases passed7.02s, including actual PublishingService with
+mocked upload objects. Initial live-object fixture incorrectly assumed the host
+privacy setting; isolated test privacy explicitly, without changing host config.
+Frontend79passed1.96s/build624ms. Copy migration21automationtables;40legacytables/
+1771rows preserved over3initializations, integrityok, live DB read-only.
+Seven-day dry-run report: GOVERNOR_VALIDATION.md,14distinct validations/0duplicates/
+0uploads/0publicationrows/0persistedapprovals. No GPU models invoked.
+Full regression execution61202 still running; one new publisher-object case was
+added after its collection, independently passed in the19-case targeted suite.
+No backend mutation since full collection. Await full result before Phase6 commit.
+
+
+Phase6 final targeted suite20passed8.58s after API/scheduler file-lock and local-day
+report corrections. This includes20tests of Governor, gates, authorizations,
+analytics, runtime metadata, reports and API. Frontend79passed1.96s/build624ms.
+Full suite execution61202 collected775tests before2 additional tests and the final
+lock/report hardening; record its result separately from the latest targeted run.
+Phase7 full regression will include all cases. No claim that post-collection tests
+ran in that earlier full invocation. Private real-video quality gate is now passed.
+
+Final Phase6 frontend:80passed2.17s/build658ms after ensuring the kill button
+remains enabled during an outstanding evaluation. npm was initially invoked from
+the repository root (no package.json); reran correctly from frontend/. This was a
+command-location error, not a product failure. Full Python run remains in progress.
+No live environment or credentials were edited; .env.example comments only changed.
+
+
+## Phase6 end-of-phase report
+
+Built: separate opt-in Governor/gates; manual default and read-only dry-run;
+atomic action/cap/spend ledgers; slots and late deferral; kill/pause/auto-trip;
+no uncertain retry and existing reconciliation integration; ordered platform
+mapping; quote-bound standing consent helpers; generation-only runtime within the
+existing single scheduler; aggregate reports; bounded existing-analytics feedback;
+admin API and matching Governor React controls. No dependency installed.
+
+Tests: complete invocation775passed686.54s vs Phase5 baseline757passed688.12s.
+After collection, final lock/report/forecast fixes and3additional tests were checked
+by the full targeted21Governor suite8.02s. Do not misstate that earlier full775
+invocation as including these3tests. Frontend80passed2.17s/build658ms vs77baseline.
+Compileall and diff-check passed. Phase7 full regression will include the final
+combined source. Initial analytics/host-privacy fixtures were corrected; no scoring
+or host privacy configuration was changed.
+
+Copy migration:21automationtables,40legacytables/1771rows preserved,3initializations,
+integrityok. No live DB migration. Seven simulated days:14distinct actual existing
+dry-run service validations,0duplicate calls/0uploads/0publicationrows/0approvals.
+Live path uses real review/publish services with mocked upload objects, once per
+platform. No live platform visibility was verified. No new GPU measurement;
+Phase5 measured episode remains pending_review after actual owner inspection.
+
+Try: Automation → Publishing Governor; defaults stay disabled/manual/dry-run.
+`.venv/bin/python scripts/run_governor.py --database /path/to/private.db` inspects
+state; add --tick for one explicitly configured tick. Existing scheduler is never
+started by these commands. Full setup/recovery: GOVERNOR.md; decisions and evidence
+GOVERNOR_VALIDATION.md. Paid helpers retain quote/cap enforcement; daily recipes
+remain local-only. No stretch feature or live upload is authorized.
+
+Files: .env.example comments, README, automation_routes, automation schema/selector,
+new authorizations/daily_report/feedback/gates/governor/runtime modules, shared
+cloud-video review helper, scheduler.py, Automation.jsx and new Governor component/
+tests, scripts/run_governor.py, tests/test_automation_governor.py and tracked docs.
+Suggested commit: feat(automation): add opt-in Governor and scheduled Director.
+Next: Phase7 operations/dashboard hardening, rendered-only units, runbook,35-day
+simulation and actual24h dry-run. Owner chose recorded sources/mocked generation.

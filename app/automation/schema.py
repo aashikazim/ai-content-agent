@@ -164,3 +164,23 @@ SCHEMA_STATEMENTS += (
         next_series_id TEXT, eligible_date TEXT NOT NULL, created_at TEXT NOT NULL,updated_at TEXT NOT NULL)""",
 )
 AUTOMATION_TABLES |= frozenset({'automation_episode_runs','automation_episode_receipts','automation_series_rollovers'})
+
+# Phase 6: one action per job/platform/mode, with durable cap reservations.
+SCHEMA_STATEMENTS += (
+    """CREATE TABLE IF NOT EXISTS automation_governor_actions (
+        action_id TEXT PRIMARY KEY, job_id TEXT NOT NULL, lane TEXT NOT NULL,
+        platform TEXT NOT NULL CHECK(platform IN ('youtube','facebook')),
+        mode TEXT NOT NULL CHECK(mode IN ('dry_run','live')), slot_at TEXT NOT NULL,
+        publish_day TEXT NOT NULL, media_sha256 TEXT NOT NULL, status TEXT NOT NULL,
+        result_json TEXT NOT NULL DEFAULT '{}' CHECK(json_valid(result_json)),
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+        UNIQUE(job_id,platform,mode))""",
+    """CREATE TABLE IF NOT EXISTS automation_spend_reservations (
+        reservation_id TEXT PRIMARY KEY, authorization_id TEXT NOT NULL REFERENCES standing_authorizations(authorization_id),
+        quote_kind TEXT NOT NULL, quote_id TEXT NOT NULL, provider TEXT NOT NULL,
+        amount_usd TEXT NOT NULL, spend_day TEXT NOT NULL, status TEXT NOT NULL,
+        result_json TEXT NOT NULL DEFAULT '{}' CHECK(json_valid(result_json)),
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE(quote_kind,quote_id))""",
+    "CREATE INDEX IF NOT EXISTS automation_governor_caps ON automation_governor_actions(publish_day,platform,mode,status)",
+)
+AUTOMATION_TABLES |= frozenset({'automation_governor_actions','automation_spend_reservations'})

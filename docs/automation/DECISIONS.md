@@ -140,3 +140,27 @@ for the foundation and have not been implemented prematurely.
 - Episode order trusts verified published records, never uploaded/private status.
   Skips require owner confirmation/reason and retain actual state; rollover creates
   a fresh planning intent and cannot approve the next cast.
+
+
+## Phase 6 — explicit Governor amendment (2026-11-07)
+
+- Implement the owner's section9 amendment: manual by default, separate Governor
+  opt-in authority. Director/workers remain generation-only. Admin/CSRF protects
+  all Governor mutations; generation API keys gain no privilege.
+- Dry-run projects approved status read-only into the existing publishing validator.
+  It never persists approval, continuity acceptance or a publication reservation.
+  Live opt-in reuses shared technical-review validation and existing review/publish
+  services, with a distinct Governor audit event; it never claims human inspection.
+- Reserve job/platform/mode and daily capacity before any live side effect. A crash
+  leaves a reconciliation hold and cannot replay. Existing manual retry authorization
+  is never consumed by Governor. Closing an inspected intent retains its unique key.
+- Keep fifteen-minute slot windows; late approval waits until the next corresponding
+  local-day slot. Count manual publications in the cap and preserve private defaults.
+  Public/private mismatch is a visibility blocker, not proof of an unaudited project.
+- Register automation in the existing scheduler process only. Default flags remain
+  false/manual/dry-run. No services, schedulers, paid calls or uploads were run.
+- Standing consent reserves conservative quote estimates with Decimal caps and
+  expiry; uncertainty keeps the full reservation. Daily recipes remain local-only;
+  paid helpers cannot silently change a provider or bypass quote consumption.
+- Reuse FeedbackService ranking with >=3 latest published samples per category and
+  bounded weights, retaining hard quotas. No fabricated analytics or GPU measurements.

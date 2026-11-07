@@ -865,9 +865,18 @@ Do not invent evidence or real-world verification; this is an AI-generated visua
         return identifiers
 
     def send_to_review(self, identifier, *, continuity_confirmed, captions_confirmed, rights_confirmed):
-        value = self.editable(identifier)
+        self.editable(identifier)
         if not all(item is True for item in (continuity_confirmed,captions_confirmed,rights_confirmed)):
             raise ValueError('Inspect character/voice continuity, caption timing, factual claims and media rights before sending to review')
+        return self._send_to_review(identifier, automated=False)
+
+    def _send_to_review(self, identifier, *, automated=False):
+        """Shared validation; only Governor uses automated mode, never an API flag.
+
+        Automated evidence is audited separately from human inspection. It cannot
+        make a cast package or grant generation/publishing credentials.
+        """
+        value = self.editable(identifier)
         with self.storage.connect() as conn:
             conn.execute('BEGIN IMMEDIATE')
             current = conn.execute('SELECT status FROM video_productions WHERE production_id=?', (identifier,)).fetchone()
@@ -881,7 +890,7 @@ Do not invent evidence or real-world verification; this is an AI-generated visua
             if quality.get('sha256') and media_sha256(path) != quality['sha256']:
                 raise ValueError('Final video changed after validation; reassemble before review')
             selected = conn.execute('SELECT * FROM video_shots WHERE production_id=? AND selected=1', (identifier,)).fetchall()
-            if value['configuration'].get('continuity_mode','independent') != 'independent' and any(item['continuity_status'] != 'accepted' for item in selected):
+            if not automated and value['configuration'].get('continuity_mode','independent') != 'independent' and any(item['continuity_status'] != 'accepted' for item in selected):
                 raise ValueError('Inspect each selected shot against the cast package and confirm its actor, outfit and voice before final review')
             if len(selected) != len(value['production_plan']['shots']) or any(not Path(item['clip_path']).is_file() for item in selected):
                 raise ValueError('Required selected shot media is missing')
@@ -889,10 +898,13 @@ Do not invent evidence or real-world verification; this is an AI-generated visua
                 media_quality = json.loads(item['media_quality_json'] or '{}')
                 if media_quality.get('sha256') and media_sha256(item['clip_path']) != media_quality['sha256']:
                     raise ValueError('A selected shot changed after validation; retrieve or regenerate it before review')
-            conn.execute("UPDATE video_shots SET continuity_status='accepted' WHERE production_id=? AND selected=1", (identifier,))
+            if not automated:
+                conn.execute("UPDATE video_shots SET continuity_status='accepted' WHERE production_id=? AND selected=1", (identifier,))
             conn.execute("UPDATE video_productions SET status='pending_review',updated_at=? WHERE production_id=?", (int(time.time()),identifier))
             conn.execute("UPDATE jobs SET status='pending_review',updated_at=? WHERE job_id=? AND status='awaiting_quality_review'", (datetime.now(timezone.utc).isoformat(),value['job_id']))
-            self.storage.event(conn, identifier, 'quality_reviewed', 'Human checked selected footage, voices, caption timing, claims and rights; video still requires separate approval and publishing')
+            self.storage.event(conn, identifier, 'governor_quality_gated' if automated else 'quality_reviewed',
+                'Opt-in Governor technical/speech/caption gates passed; no human inspection is asserted' if automated else
+                'Human checked selected footage, voices, caption timing, claims and rights; video still requires separate approval and publishing')
         return self.storage.get(identifier)
 
     def accept_continuity(self, identifier, attempt_id, confirmed):

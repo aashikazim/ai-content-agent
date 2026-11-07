@@ -8,8 +8,10 @@ explicit skips and finale/next-series planning. The new episode panel reuses the
 existing quality inspection and Review workflows. New series still require human
 cast approval. See [episode operations](docs/automation/EPISODES.md) and
 [real 240-second render evidence](docs/automation/EPISODE_VALIDATION.md).
-The real episode awaits human quality confirmation; technical readiness alone
-never approves content. Governor/scheduler wiring remains future work.
+The real episode passed owner quality inspection and entered the private validation
+Review queue. It remains unapproved and unpublished; technical readiness alone
+never approves content. Phase 6 adds the opt-in Governor and single-scheduler wiring; both remain disabled by default.
+See [Governor operations](docs/automation/GOVERNOR.md).
 
 Phase 4 provides **Automation → Series planning**: local premises, a frozen story
 bible, a validated 30-day hook grid, outline editing and explicit manual cast
@@ -40,7 +42,7 @@ injectable Clock, additive SQLite schema, append-only audit events, persistent
 idempotency helpers and a planning-only Lane/Director skeleton. No automation runs
 on startup; existing creation, review, publishing, APIs and dashboards are unchanged.
 Five Shorts can be queued as an explicit local batch. The 30-day series outline and cast gate are available;
-5–10-minute episode production is available after cast approval. Automatic scheduling is not wired; Lane C ships disabled.
+5–10-minute episode production is available after cast approval. Automatic scheduling is opt-in through the existing scheduler; Lane C ships disabled.
 
 ```bash
 # Offline inspection: no database writes, providers, GPU work or services.
@@ -48,8 +50,7 @@ Five Shorts can be queued as an explicit local batch. The 30-day series outline 
 .venv/bin/python -m pytest tests/test_automation_foundation.py -q
 ```
 
-Director/Governor default disabled, lane approval modes default manual, and future
-Governor dry-run defaults true. No live-database migration is applied in this phase.
+Director/Governor default disabled, lane approval modes default manual, and Governor dry-run defaults true. No live-database migration is applied in this phase.
 Phase 1 verification: **675 Python tests passed** (baseline 623), **66 frontend
 tests passed** and the production build passed. All existing database tables/rows
 were preserved across three initializations of a private migration copy.
@@ -760,11 +761,14 @@ The table records the original Days1–7 foundation and its current status. Late
 
 ## Security and content policy
 
-- **Manual review and separate publishing remain the current behavior.** A future
-  opt-in automation Governor is specified for `auto_with_gates`; only that separate
-  component may evaluate gates and invoke the existing approval/publication paths.
-  It is not implemented through Phase 4. Director and generation workers never approve
-  or publish. The default remains manual; future Governor mode defaults to dry-run.
+- **Manual review and separate publishing remain the default.** The opt-in
+  Governor is the only automation component allowed to approve/publish when a lane
+  is explicitly `auto_with_gates`, automation and Governor are enabled, all gates
+  pass, a publish slot is due, and dry-run is disabled. Governor dry-run defaults
+  true and makes no approval/upload changes. Director and generation workers
+  never approve or publish. Cast approval stays human. Kill switches, caps,
+  reconciliation holds and permanent job/platform claims remain enforced. See
+  [Governor setup and recovery](docs/automation/GOVERNOR.md).
 - **Separate privileges.** Generation, review, and publishing use separate API credentials where supported.
 - **No duplicate blind uploads.** If a platform upload's outcome is uncertain, reconcile it before authorizing a new attempt.
 - **Private by default.** YouTube uploads default to `private` until manually changed through the platform's controls.
@@ -789,12 +793,12 @@ Commit/push only after reviewing the intended source/documentation changes. `.en
 ## Project direction
 
 Content-quality tools, narration, source-aware scripting and regeneration remain
-available. The new daily-automation roadmap extends them through generation-only
-lanes and, in a later phase, a separate opt-in Governor with technical/speech/caption/
-duplicate/ordering/platform gates, publish slots, caps, kill switch and reconciliation.
-The current implemented workflow remains **creation → manual review → separate
-manual publishing → analytics**. Phase 1 adds foundations only; no autonomous
-approval or publication capability is available yet.
+available. Daily generation lanes reuse those pipelines and the existing durable
+queue. Default behavior is **creation → manual review → separate manual publishing
+→ analytics**. The owner may opt a lane into the separate Governor, with technical,
+speech, caption, duplicate, ordering and platform gates, slots, caps and kill switches.
+Automatic jobs register only inside the existing single APScheduler process behind
+AUTOMATION_ENABLED. No service is installed or started by these changes.
 
 ### Historical provider verification
 

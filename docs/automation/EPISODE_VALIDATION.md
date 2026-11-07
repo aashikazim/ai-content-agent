@@ -1,6 +1,6 @@
 # Phase 5 real episode — Tidal Echoes, Ep 1
 
-Job `b512edc1-2f34-437e-aaa7-85c736901f42`; private validation only. Owner approved the cast images and selection; finished-video quality approval remains separate.
+Job `b512edc1-2f34-437e-aaa7-85c736901f42`; private validation only. Owner approved the cast images and selection, then explicitly confirmed finished-video continuity, captions and rights. The video is pending_review in the private validation database; content approval and publishing remain separate.
 
 Final MP4: `/home/aashik/Github/ai-content-agent/data/automation/validation/episode-20261107-v2/videos/84adf95f-d492-42ed-bbf1-45449f1f52e4/assembly_1c48fd93-3928-4b7f-ab12-5a60f6d27f25/final_video.mp4`
 
@@ -21,7 +21,7 @@ Measured LTX stage seconds: **4828.80**. Render wall seconds: **5248.59**. These
 - The model produced two120s chapters and the actual-script state update; all passed first attempt. Story memory, dialogue, approved cast/voices and next outline were supplied. Chapters never exceed180s.
 - The first framing probe exposed native LTX center-cropping portrait references. Two completed shots were preserved;22 never-submitted reservations were cancelled. No unknown outcome was retried.
 - Corrected run reused the completed real screenplay/state and unchanged approved identity files. Geometry-only scene frames preserve the complete portrait; side-fill remains visible. This is not a claim of full-frame scenic composition or guaranteed semantic/acting quality.
-- Current final output waits at awaiting_quality_review. No human continuity/caption/rights confirmations or content approval were fabricated. Review transition is pending the owner’s inspection.
+- After owner inspection and explicit confirmation of all three checks, the existing human quality flow accepted all24 selected shots and moved the job to pending_review. No content approval or publishing was performed. Evidence: manual-quality-acceptance.json; zero publication rows.
 - All24 shots passed existing technical validation, file hash matches, actual script memory is hash-bound, and replay changed no job/script/shot/run/measurement rows.
 - Source data, videos, references and checkpoints stay ignored. Only this report and code/tests/docs are committed. Real source copies/approvals/probe history remain under data/automation/validation.
 

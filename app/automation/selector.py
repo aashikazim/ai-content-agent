@@ -1,5 +1,5 @@
 """Pure topic clustering/selection. Preview uses SQLite read-only and no network."""
-from dataclasses import dataclass,asdict
+from dataclasses import dataclass,asdict,replace
 from datetime import datetime,timedelta,timezone
 from pathlib import Path
 from typing import Any,Callable
@@ -117,6 +117,10 @@ class TopicSelector:
     def preview(self,config: ShortsLaneConfig,region: str='US') -> dict[str,Any]:
         signals,used=self.inputs(region,config.cooldown_days)
         all_topics=cluster(signals,utc_now(self.clock))
+        from app.automation.feedback import category_weights
+        weights=category_weights(self.db_path)
+        all_topics=sorted((replace(t,score=round(t.score*weights.get(t.category,1),5),
+            reasons=t.reasons+((f"analytics category weight {weights[t.category]:.4f}",) if t.category in weights else ())) for t in all_topics),key=lambda t:(-t.score,t.normalized_topic))
         eligible=[t for t in all_topics if not any(similar(t.normalized_topic,u) for u in used)]
         picked=[];remaining=list(eligible)
         shortages=[]

@@ -55,15 +55,12 @@ def generate_content():
 
 
 def main():
-    if os.getenv(
-        "SCHEDULER_ENABLED",
-        "false"
-    ).lower() != "true":
-        logging.warning(
-            "Scheduler is disabled. "
-            "Set SCHEDULER_ENABLED=true "
-            "after completing manual tests."
-        )
+    from app.automation.config import load_settings
+    from app.automation.runtime import register_jobs
+    automation = load_settings()
+    legacy_enabled = os.getenv('SCHEDULER_ENABLED', 'false').lower() == 'true'
+    if not legacy_enabled and not automation.enabled:
+        logging.warning('Scheduler and automation are disabled.')
         return
 
     timezone = os.getenv(
@@ -75,29 +72,32 @@ def main():
         timezone=timezone
     )
 
-    scheduler.add_job(
-        generate_content,
-        trigger=CronTrigger(
-            hour=int(
-                os.getenv(
-                    "SCHEDULER_HOUR",
-                    "9"
-                )
+    if legacy_enabled:
+        scheduler.add_job(
+            generate_content,
+            trigger=CronTrigger(
+                hour=int(
+                    os.getenv(
+                        "SCHEDULER_HOUR",
+                        "9"
+                    )
+                ),
+                minute=int(
+                    os.getenv(
+                        "SCHEDULER_MINUTE",
+                        "0"
+                    )
+                ),
+                timezone=timezone
             ),
-            minute=int(
-                os.getenv(
-                    "SCHEDULER_MINUTE",
-                    "0"
-                )
-            ),
-            timezone=timezone
-        ),
-        id="daily_content_generation",
-        replace_existing=True,
-        max_instances=1,
-        coalesce=True,
-        misfire_grace_time=300
-    )
+            id="daily_content_generation",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
+            misfire_grace_time=300
+        )
+
+    register_jobs(scheduler, automation)
 
     logging.info(
         "Content scheduler started. "
