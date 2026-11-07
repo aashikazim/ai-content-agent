@@ -1,0 +1,53 @@
+{
+  "items": [
+    {
+      "project": "en.wikipedia",
+      "access": "all-access",
+      "year": "2024",
+      "month": "01",
+      "day": "01",
+      "articles": [
+        {
+          "article": "Main_Page",
+          "views": 4817450,
+          "rank": 1
+        },
+        {
+          "article": "New_Year's_Day",
+          "views": 1271924,
+          "rank": 2
+        },
+        {
+          "article": "Special:Search",
+          "views": 1116540,
+          "rank": 3
+        },
+        {
+          "article": "New_Year",
+          "views": 760990,
+          "rank": 4
+        },
+        {
+          "article": "Lynyrd_Skynyrd",
+          "views": 416268,
+          "rank": 5
+        },
+        {
+          "article": "Murder_of_Dee_Dee_Blanchard",
+          "views": 338406,
+          "rank": 6
+        },
+        {
+          "article": "Elle_King",
+          "views": 338065,
+          "rank": 7
+        },
+        {
+          "article": "Saltburn_(film)",
+          "views": 334803,
+          "rank": 8
+        }
+      ]
+    }
+  ]
+}

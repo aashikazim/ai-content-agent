@@ -1,0 +1,14 @@
+{
+  "data": {
+    "children": [
+      {
+        "data": {
+          "id": "fixture1",
+          "title": "A science discovery",
+          "created_utc": 1794000000,
+          "score": 42
+        }
+      }
+    ]
+  }
+}

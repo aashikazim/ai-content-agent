@@ -68,3 +68,19 @@ GPU forecasting/degradation, cast/scene-reference approval UX, thread/state judg
 standing authorization accounting, Governor gate evidence/visibility reporting and
 live deployment are assigned to their specified later phases. They are not blockers
 for the foundation and have not been implemented prematurely.
+
+
+## 2026-11-06 — Phase 2
+
+- Owner explicitly authorized commits after Phases 2/3/4 and progression through
+  Phase 4, superseding the earlier wait-after-each-phase instruction for these
+  milestones only. No push, publishing, service start or paid provider use.
+- Explicit manual collection may run while AUTOMATION_ENABLED=false; no scheduled
+  job is registered until Phase 6. Collection intervals are idempotency buckets.
+- Preview is strictly local/read-only. Optional Ollama category fallback occurs
+  during collection, under the cinematic lock, with keep_alive=0.
+- Real YouTube collection uses a private fresh DB; future live migration requires
+  backup first. Wikimedia signals are global English rather than falsely regional.
+- Quota fallback is explicit when a real source sample lacks requested categories.
+  No fabricated diversity or topics. Fixture provenance records remote GDELT
+  recording failure and synthetic optional Reddit/contract bodies honestly.

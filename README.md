@@ -2,6 +2,16 @@
 
 ## Daily automation foundation — 2026-11-06
 
+Phase 2 adds explicit trend collection and read-only topic preview. YouTube uses
+existing discovery/ranking; GDELT, Wikimedia and Hacker News provide additional
+signals. Optional Google Trends/Reddit default disabled. Topic clustering, cooldown,
+quotas, fallbacks and ranked backups are available via the new admin-authenticated
+`POST /api/v1/automation/plan-preview` and `scripts/run_director.py --preview`.
+See [trend setup and scoring](docs/automation/TRENDS.md). One private real YouTube
+collection returned 50 signals; its five selected topics and category fallbacks
+are recorded in the automation progress document. No third-party footage is reused.
+
+
 Phase 1 of the opt-in automation layer adds validated lane configuration, an
 injectable Clock, additive SQLite schema, append-only audit events, persistent
 idempotency helpers and a planning-only Lane/Director skeleton. No automation runs

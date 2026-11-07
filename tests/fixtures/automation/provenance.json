@@ -1,0 +1,21 @@
+{
+  "wikipedia.json": {
+    "provenance": "Recorded official API response, reduced to consumed fields",
+    "url": "https://wikimedia.org/api/rest_v1/metrics/pageviews/top/en.wikipedia/all-access/2024/01/01"
+  },
+  "hackernews.json": {
+    "provenance": "Recorded official API response, reduced to consumed fields",
+    "url": "https://hacker-news.firebaseio.com/v0/item/8863.json"
+  },
+  "gdelt.json": {
+    "recording_failed": "HTTPError",
+    "provenance": "Synthetic contract fixture matching existing research_service tests; live recording unavailable (HTTPError)"
+  },
+  "youtube.json": {
+    "provenance": "Recorded from the single authorized real mostPopular US collection; first six items, fields reduced",
+    "recorded_at": "2026-11-06 America/New_York"
+  },
+  "reddit.json": {
+    "provenance": "Synthetic OAuth contract fixture; no Reddit credential/live access used"
+  }
+}
