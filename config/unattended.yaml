@@ -1,0 +1,40 @@
+# Unattended ("no clicks") mode. This one file is all you normally edit.
+# It overlays config/lanes.yaml; categories, durations and GPU window stay there.
+#
+# Nothing here bypasses the safety net: one upload per job/platform, publish
+# slots, daily caps, reconciliation holds and the kill switch always apply.
+# Stop everything at any time:  touch data/automation/KILL
+#
+# Still required in .env (owner-controlled, never changed by this file):
+#   AUTOMATION_ENABLED=true  DURABLE_WORKERS=true
+#   AUTOMATION_GOVERNOR_ENABLED=true  AUTOMATION_GOVERNOR_DRY_RUN=false
+#   AUTOMATION_UNATTENDED_FILE=config/unattended.yaml
+# Restart the scheduler and worker services after editing this file.
+
+enabled: true            # true = no review clicks, no cast upload, auto publish
+
+scripts:
+  provider: openai        # ollama (local, free) | openai | claude
+  model: null             # null = provider default
+  # openai/claude cost money and are used for Shorts scripts only when BOTH exist:
+  #   1. AUTOMATION_DAILY_BUDGET_USD > 0 in .env
+  #   2. an active standing authorization (Automation -> Publishing Governor,
+  #      or POST /api/v1/automation/authorizations) that lists the provider
+  # Otherwise, or after a known failure, this decides what happens:
+  if_unavailable: ollama  # ollama = fall back to local | skip = skip that Short
+
+shorts:
+  per_day: 10              # 5-10 Shorts per day
+  platforms: [youtube, facebook]
+  first_slot: "09:00"     # publish times are spread evenly between these
+  last_slot: "21:00"
+
+series:
+  enabled: true           # one episode per day, 30-day stories, auto rollover
+  platforms: [youtube, facebook]   # youtube is required; facebook is optional
+  publish_slot: "19:00"
+  genre: mystery drama    # used when a brand-new series must be started
+  auto_cast: true         # generate + freeze the cast locally (SDXL), no upload
+  auto_skip_stuck_after_hours: 24  # skip a failed/stuck episode and continue
+
+publication_check_minutes: 15   # read-only status checks on uploaded videos

@@ -23,9 +23,9 @@ def window_remaining(settings,clock):
 
 
 class DirectorRuntime:
-    def __init__(self,db_path,settings=None,*,clock=None,shorts=None,episodes=None):
+    def __init__(self,db_path,settings=None,*,clock=None,shorts=None,episodes=None,upkeep=None):
         self.settings=settings or load_settings();backup_before_upgrade(db_path)
-        self.storage=AutomationStorage(db_path,clock=clock);self.shorts=shorts;self.episodes=episodes
+        self.storage=AutomationStorage(db_path,clock=clock);self.shorts=shorts;self.episodes=episodes;self.upkeep=upkeep
 
     def tick(self,*,launch=True):
         if not self.settings.enabled:return {'status':'disabled','lanes':{}}
@@ -33,6 +33,13 @@ class DirectorRuntime:
         if not remaining:return {'status':'outside_gpu_window','lanes':{}}
         day=local_day(self.storage.clock,self.settings.config.timezone);result={'status':'generation_only','lanes':{}}
         gpu=GPUPlanner(self.storage,self.settings.config)
+        if self.settings.unattended is not None:
+            # Opt-in upkeep: start/cast a series and skip a stuck episode. Queue
+            # intents only; the single durable worker performs any GPU work.
+            try:
+                from app.automation.series.auto_cast import AutoCastService
+                result['unattended']=(self.upkeep or AutoCastService(self.storage.db_path,self.settings,clock=self.storage.clock)).tick()
+            except ValueError as exc:result['unattended']={'status':'held','reason':str(exc)[:500]}
         for identifier,cfg in self.settings.config.lanes.items():
             with self.storage.connect() as c:override=c.execute('SELECT enabled FROM lane_settings WHERE lane=?',(identifier,)).fetchone()
             if not cfg.enabled or override and override[0]==0:continue
@@ -86,6 +93,14 @@ def governor_tick():
     return Governor(database_path(),settings).tick()
 
 
+def publication_tick():
+    """Read-only platform status checks; never uploads or retries."""
+    from app.automation.publication_observer import PublicationObserver
+    settings=load_settings()
+    if not settings.enabled or not settings.governor_enabled or settings.unattended is None:return {'status':'disabled'}
+    return PublicationObserver(database_path(),settings).tick()
+
+
 def report_tick():
     from app.automation.daily_report import write_daily_report
     settings=load_settings()
@@ -104,5 +119,7 @@ def register_jobs(scheduler,settings):
         ('automation_daily_plan',generation_tick,dict(trigger='cron',hour=settings.plan_hour,minute=settings.plan_minute,timezone=zone)),
         ('automation_report',report_tick,dict(trigger='cron',hour=23,minute=55,timezone=zone))]
     if settings.governor_enabled:entries.append(('automation_governor',governor_tick,dict(trigger='cron',minute='*',timezone=zone)))
+    if settings.governor_enabled and settings.unattended is not None:
+        entries.append(('automation_publication_check',publication_tick,dict(trigger='interval',minutes=settings.unattended.publication_check_minutes)))
     for identifier,callback,trigger in entries:scheduler.add_job(callback,id=identifier,**trigger,**common)
     return [e[0] for e in entries]

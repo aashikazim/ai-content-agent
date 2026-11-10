@@ -5,7 +5,7 @@ import re
 import string
 from decimal import Decimal
 from pathlib import Path
-from typing import Annotated, Literal, Mapping, Self
+from typing import Annotated, Any, Literal, Mapping, Self
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import yaml
@@ -57,7 +57,9 @@ class Recipe(ConfigModel):
     provider: Literal["local_cinematic"] = "local_cinematic"
     model: Literal["ltx-2.5", "wan2.2-animate-2", "ltx-wan-hybrid"] = "ltx-2.5"
     input_mode: Literal["text", "image"] = "text"
-    script_provider: Literal["ollama"] = "ollama"
+    # Paid providers still need an owner standing authorization and quote.
+    script_provider: Literal["ollama", "openai", "anthropic"] = "ollama"
+    script_model: str | None = Field(default=None, min_length=1, max_length=200)
     narration: Literal["local_tts", "model_audio", "character_tts"] = "local_tts"
     captions: Literal["asr", "aligned"] = "asr"
     cast_mode: Literal["none", "approved"] = "none"
@@ -152,7 +154,7 @@ class StoryLaneConfig(LaneConfig):
     episodes_per_series: int = Field(default=30, ge=30, le=30, strict=True)
     episode_duration_s: EpisodeDuration = Field(default_factory=EpisodeDuration)
     buffer_ahead_episodes: int = Field(default=3, ge=0, le=29, strict=True)
-    platforms: list[Literal["youtube"]] = Field(default_factory=lambda: ["youtube"])
+    platforms: list[Platform] = Field(default_factory=lambda: ["youtube"])
     publish_slot: Minute = "19:00"
     next_series_gap_days: int = Field(default=1, ge=0, le=365, strict=True)
     series_start_mode: Literal["manual_cast_approval", "auto"] = "manual_cast_approval"
@@ -161,8 +163,10 @@ class StoryLaneConfig(LaneConfig):
 
     @model_validator(mode="after")
     def youtube_required(self) -> Self:
-        if self.platforms != ["youtube"]:
-            raise ValueError("Episodes use YouTube only; Facebook Reels rejects long videos")
+        # Episode order is verified against YouTube; Facebook is an optional
+        # long-video (non-Reels) addition used only by the opt-in Governor.
+        if "youtube" not in self.platforms:
+            raise ValueError("Episodes require YouTube; Facebook long video is optional")
         return self
 
 
@@ -228,6 +232,8 @@ class AutomationSettings(ConfigModel):
     # No webhook client exists in Phase 1. Hide the future secret-bearing URL in repr.
     alert_webhook_url: str = Field(default="", repr=False)
     config: AutomationConfig
+    # Parsed config/unattended.yaml when its opt-in flag is true; else None.
+    unattended: Any = None
 
 
 class UniqueKeyLoader(yaml.SafeLoader):
@@ -282,6 +288,11 @@ def load_settings(
         config = AutomationConfig.model_validate(
             config.model_dump() | {"timezone": env["AUTOMATION_TIMEZONE"]}
         )
+    from app.automation.unattended import apply_unattended, load_unattended
+    # Two explicit opt-ins: this variable names the file AND the file says enabled.
+    unattended = load_unattended(env.get("AUTOMATION_UNATTENDED_FILE") or None)
+    if unattended is not None:
+        config = apply_unattended(config, unattended)
     return AutomationSettings(
         enabled=_boolean(env, "AUTOMATION_ENABLED", False),
         governor_enabled=_boolean(env, "AUTOMATION_GOVERNOR_ENABLED", False),
@@ -294,4 +305,5 @@ def load_settings(
         daily_budget_usd=env.get("AUTOMATION_DAILY_BUDGET_USD", "0"),
         alert_webhook_url=env.get("AUTOMATION_ALERT_WEBHOOK_URL", ""),
         config=config,
+        unattended=unattended,
     )

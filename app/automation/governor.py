@@ -41,7 +41,7 @@ class Governor:
 
     def _publisher(self,identifier,dry_run):
         return PublishingService(jobs=ApprovedProjection(self.jobs,identifier) if dry_run else self.jobs,
-            content_storage=self.productions.content_storage,publications=self.publications)
+            content_storage=self.productions.content_storage,publications=self.publications,allow_long_facebook=True)
 
     def killed(self):
         if self.settings.kill_switch_file.exists():return True
@@ -232,7 +232,7 @@ class Governor:
             except (ValueError,KeyError,OSError):reasons.append('Frozen identity or continuation evidence cannot be verified')
             for platform in available:
                 why=list(reasons)
-                if platform not in ({'youtube','facebook'} if item['kind']=='topic_shorts' else {'youtube'}):why.append('Platform not supported for this lane')
+                if platform not in ({'youtube','facebook'} if item['kind']=='topic_shorts' else set(cfg.platforms)):why.append('Platform not supported for this lane')
                 why+=self.operational_holds(item,platform,job,plan)
                 slot=self.due_slot(item)
                 if slot is None:why.append('Waiting for the next configured publish slot')

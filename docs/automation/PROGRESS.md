@@ -1008,3 +1008,19 @@ heartbeat2026-11-07T20:53:48.513045+00:00; source hashes match,0publicationrows/
 0forbiddencalls/0duplicatecalls/interrupted=[]. Existing791Python/82frontend/build
 results apply; subsequent changes are documentation and authorized private quality
 transitions only. No reason to rerun the long suites for this commit-only request.
+
+
+## Unattended mode — 2026-11-10
+
+Audit before changes: scheduler/worker units stopped, API running, KILL file
+present, Governor live, YouTube public, both lanes auto_with_gates; YouTube paused
+by two invalid_grant needs_reconciliation records (49a22438…, 299c3983…), no
+remote IDs. Baseline targeted tests: 150 passed, 2 failed (both from host-local
+state: owner-edited config/lanes.yaml approval modes and .env dry-run value).
+
+Added config/unattended.yaml (disabled), app/automation/unattended.py,
+series/auto_cast.py, publication_observer.py, services/facebook_video_publisher.py;
+paid Shorts scripts via standing authorization; story lanes may add Facebook.
+Targeted run: 187 passed, same 2 host-local failures. All new behavior is mocked;
+no service started, no upload, no paid call, no GPU run, .env untouched.
+See UNATTENDED.md. Not yet verified live: auto-cast SDXL run, Facebook long video.

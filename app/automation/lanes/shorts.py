@@ -27,13 +27,24 @@ class ShortScript(BaseModel):
 def recipe_configuration(recipe: Recipe,topic: dict[str,Any]) -> GenerationConfig:
     if recipe.input_mode!='text' or recipe.model!='ltx-2.5' or recipe.cast_mode!='none':
         raise ValueError('Daily Shorts currently require independent LTX text mode; use approved-cast Local Video Studio for image/Wan recipes')
+    paid=recipe.script_provider!='ollama'
+    if paid:
+        # Paid models receive the recipe structure in the topic; local keeps its
+        # own beat planner. Spending still needs a quote + standing authorization.
+        from app.services.anthropic_script_service import ANTHROPIC_MODEL
+        from app.services.openai_script_service import OPENAI_SCRIPT_MODELS
+        model=recipe.script_model or (ANTHROPIC_MODEL if recipe.script_provider=='anthropic' else OPENAI_SCRIPT_MODELS[0])
+        value=brief(topic,recipe)
+        subject=(f"{topic['title'][:300]}. Structure: {value['structure']}. Style: {recipe.style}. {value['instruction']} "
+            'One continuous moving shot per scene; narration only, no on-screen text.')[:1000]
     return GenerationConfig(content_type='news' if recipe.style=='news_explainer' else 'realistic_short',
-        script_provider='ollama',video_provider='local_cinematic',video_model=recipe.model,
-        video_input_mode='text',source_mode='topic',topic=topic['title'][:1000],
+        script_provider=recipe.script_provider,**({'script_model':model} if paid else {}),
+        video_provider='local_cinematic',video_model=recipe.model,
+        video_input_mode='text',source_mode='topic',topic=subject if paid else topic['title'][:1000],
         visual_style='2d_cartoon' if recipe.style=='animation' else 'cinematic',
         narration=recipe.narration,captions=recipe.captions,speech_profile_id=recipe.speech_profile_id,
         duration_seconds=recipe.duration_s,aspect_ratio=recipe.aspect,resolution='720p',fps=24,
-        max_shots=12,require_motion=True,max_cost_usd='0')
+        max_shots=12,require_motion=True,max_cost_usd='1' if paid else '0')
 
 
 def brief(topic: dict[str,Any],recipe: Recipe) -> dict[str,Any]:

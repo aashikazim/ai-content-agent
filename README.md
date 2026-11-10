@@ -2,6 +2,12 @@
 
 ## Daily automation and series planning — 2026-11-07
 
+**Unattended mode (2026-11-10, opt-in):** `config/unattended.yaml` removes routine
+dashboard steps: 5–10 Shorts per day, automatic synthetic series cast, daily
+episodes to YouTube and Facebook, and optional OpenAI/Claude Shorts scripts under
+a standing authorization. Publication uniqueness, slots, caps, reconciliation
+holds and kill switches are unchanged. See [unattended mode](docs/automation/UNATTENDED.md).
+
 Phase 7 adds **Automation → Operations**, read-only queue/heartbeat/recovery views,
 GPU seed/measurement labels, systemd previews and the [operations runbook](docs/automation/RUNBOOK.md).
 The [verification matrix](docs/automation/VERIFICATION.md) and

@@ -265,6 +265,44 @@ class PublishingStorage:
                 (publication_id, 'retry_authorized', details, now))
         return self.get(publication_id)
 
+    # Failures raised while obtaining credentials, before any upload request.
+    UNSENT_ERRORS = frozenset({"RefreshError"})
+
+    def unsent_attempts(self):
+        """Uncertain rows whose recorded failure happened before any upload request."""
+        with self.connect() as conn:
+            rows = conn.execute("""SELECT p.* FROM publications p WHERE p.status='needs_reconciliation'
+                AND COALESCE(p.platform_video_id,'')='' ORDER BY p.created_at""").fetchall()
+            result = []
+            for row in rows:
+                last = conn.execute("""SELECT event_type,details FROM publication_events WHERE publication_id=?
+                    ORDER BY event_id DESC LIMIT 1""", (row['publication_id'],)).fetchone()
+                if last and last['event_type'] == 'upload_outcome_uncertain' and last['details'] in self.UNSENT_ERRORS:
+                    result.append(dict(row))
+        return result
+
+    def close_unsent(self, publication_id, *, confirmed_not_uploaded=False, notes="", actor="local-admin"):
+        """Owner closes an attempt that never reached the platform. Never a retry.
+
+        Only a credential-refresh failure with no remote ID qualifies. The row and
+        its (job_id, platform) uniqueness stay, so this job can never be uploaded
+        to that platform again; the status becomes the terminal ``failed``.
+        """
+        if confirmed_not_uploaded is not True or not isinstance(notes, str) or len(notes.strip()) < 10 or len(notes) > 1000:
+            raise ValueError("Confirm that no video was uploaded and provide inspection notes (10–1000 characters)")
+        if publication_id not in {row['publication_id'] for row in self.unsent_attempts()}:
+            raise ValueError('Only an attempt that failed while refreshing credentials, with no remote video ID, can be closed; inspect remote state instead')
+        now = datetime.now(timezone.utc).isoformat()
+        with self.connect() as conn:
+            conn.execute('BEGIN IMMEDIATE')
+            changed = conn.execute("""UPDATE publications SET status='failed',updated_at=? WHERE publication_id=?
+                AND status='needs_reconciliation' AND COALESCE(platform_video_id,'')=''""", (now, publication_id))
+            if changed.rowcount != 1:
+                raise ValueError('Publication changed; inspect it again')
+            conn.execute('INSERT INTO publication_events (publication_id,event_type,details,created_at) VALUES (?,?,?,?)',
+                (publication_id, 'closed_unsent', json.dumps({'actor': actor, 'notes': notes.strip(), 'retry_allowed': False}), now))
+        return self.get(publication_id)
+
     def reserve_authorized_retry(self, publication_id):
         """Atomically consume a human authorization once, preserving uniqueness."""
         now = datetime.now(timezone.utc).isoformat()

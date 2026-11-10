@@ -198,3 +198,25 @@ through Phase7 now, then address any dry-run findings with separate bug-fix comm
 Commit the verified implementation with the elapsed-time matrix still pending.
 Keep the existing foreground run and its source hashes unchanged; do not restart
 it, enable live uploads, start services or begin stretch work.
+
+
+## Unattended mode — owner request (2026-11-10)
+
+- The owner asked for no dashboard intervention. Add an opt-in overlay file
+  (config/unattended.yaml, read only when AUTOMATION_UNATTENDED_FILE names it) instead of weakening defaults.
+  Env flags remain the outer grant; the file never enables the Governor itself.
+- This supersedes the Phase 4 "cast approval stays human" rule only when the
+  overlay sets series_start_mode=auto: local SDXL portraits of fictional bible
+  characters are frozen through the existing cast package and approve_cast path,
+  with an automation actor and human_inspected=false in the audit log.
+- Recipes may name openai/anthropic. Spending still requires the existing quote,
+  an owner standing authorization and a positive global daily budget; otherwise
+  local Ollama (or skip). Series planning/episode scripts remain local.
+- Episodes may also go to Facebook as Page videos through a separate publisher
+  that only the Governor enables; the Reels path and manual default are unchanged.
+- A scheduled read-only status check supplies verified "published" states; it
+  never uploads. Uncertain uploads still pause the platform for the owner.
+- A stuck head episode is skipped through the existing audited skip, never
+  resubmitted, and never while YouTube is paused or an upload attempt exists.
+- Wan/hybrid stays out of unattended episodes: measured rates cannot fit a
+  daily 5–10 minute episode in the nightly window.

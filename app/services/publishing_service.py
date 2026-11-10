@@ -17,7 +17,9 @@ class PublishingService:
         content_storage=None,
         publications=None,
         youtube=None,
-        facebook=None
+        facebook=None,
+        facebook_video=None,
+        allow_long_facebook=False
     ):
         db_path = os.getenv(
             "DATABASE_PATH",
@@ -46,6 +48,9 @@ class PublishingService:
         # This allows dry runs without platform credentials.
         self.youtube = youtube
         self.facebook = facebook
+        # Long Page videos are opt-in per caller; the default stays Reels-only.
+        self.facebook_video = facebook_video
+        self.allow_long_facebook = allow_long_facebook is True
 
     def publish(
         self,
@@ -112,7 +117,8 @@ class PublishingService:
         # Support a dictionary or Pydantic model.
         if hasattr(plan, "model_dump"):
             plan = plan.model_dump()
-        if platform == 'facebook' and sum(scene['duration_seconds'] for scene in plan.get('scenes',[])) > 60:
+        long_facebook = platform == 'facebook' and sum(scene['duration_seconds'] for scene in plan.get('scenes',[])) > 60
+        if long_facebook and not self.allow_long_facebook:
             raise ValueError('Long-form Facebook uploads are not supported by this Reels integration; use YouTube for this drama')
 
         title = plan["title"]
@@ -215,11 +221,15 @@ class PublishingService:
                 )
 
             else:
-                publisher = (
-                    self.facebook
-                    if self.facebook is not None
-                    else FacebookPublisher()
-                )
+                if long_facebook:
+                    from app.services.facebook_video_publisher import FacebookVideoPublisher
+                    publisher = self.facebook_video if self.facebook_video is not None else FacebookVideoPublisher()
+                else:
+                    publisher = (
+                        self.facebook
+                        if self.facebook is not None
+                        else FacebookPublisher()
+                    )
 
                 result = publisher.upload(
                     video_path=video_path,

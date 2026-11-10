@@ -66,7 +66,7 @@ def test_shipped_config_safe_defaults_and_owner_runtime_override():
     (("lanes", "shorts_daily", "recipes", "comedy", "duration_s"), 29),
     (("lanes", "shorts_daily", "recipes", "comedy", "duration_s"), True),
     (("lanes", "shorts_daily", "recipes", "comedy", "model"), "unsupported"),
-    (("lanes", "shorts_daily", "recipes", "comedy", "script_provider"), "openai"),
+    (("lanes", "shorts_daily", "recipes", "comedy", "script_provider"), "gemini"),
     (("lanes", "shorts_daily", "recipes", "comedy", "provider"), "runway"),
     (("lanes", "shorts_daily", "recipes", "comedy", "model"), "ltx-wan-hybrid"),
     (("lanes", "shorts_daily", "recipes", "politics", "source_bundle"), None),

@@ -190,11 +190,25 @@ class ShortsService:
                 conn.execute('''INSERT INTO automation_short_receipts VALUES (?,?,?,?,?,?,?)
                     ON CONFLICT(daily_plan_id,attempt_no,receipt_no) DO UPDATE SET errors_json=excluded.errors_json,updated_at=excluded.updated_at''',
                     (identifier,attempt,number,canonical_json(body),canonical_json(errors),now,now))
-        scripts=ScriptGenerationService(self.storage.db_path,local_factory=lambda model:ShortsPlanner(config,topic,recipe,receipt=receipt))
-        request=scripts.request(config,category='mixed',purpose='video')
-        script_id=scripts.submit(request,'automation:shorts');self.link(identifier,attempt,script_attempt_id=script_id)
-        scripts.run(script_id);draft=scripts.get(script_id)
-        if draft['status']!='completed':return {'status':'needs_reconciliation' if draft['status']=='needs_reconciliation' else 'failed','error':draft.get('error') or 'Local screenplay did not validate'}
+        draft=None
+        if config.script_provider!='ollama':
+            draft=self.paid_script(identifier,attempt,config)
+            if draft is not None and draft['status']=='needs_reconciliation':
+                return {'status':'needs_reconciliation','error':draft.get('error') or 'Paid script outcome is uncertain; inspect provider usage'}
+            if draft is None or draft['status']!='completed':
+                # Known unavailable/failed paid request: nothing is retried there.
+                choice=getattr(getattr(self.settings,'unattended',None),'scripts',None)
+                if choice is not None and choice.if_unavailable=='skip':
+                    return {'status':'failed','error':'Paid script provider unavailable; slot skipped by configuration'}
+                EventLog(self.storage).append('director','script.local_fallback','daily_plan',identifier,{'provider':config.script_provider,'reason':(draft or {}).get('error') or 'not authorized or over budget'})
+                recipe=recipe.model_copy(update={'script_provider':'ollama','script_model':None});config=recipe_configuration(recipe,topic);draft=None
+        if draft is None:
+            scripts=ScriptGenerationService(self.storage.db_path,local_factory=lambda model:ShortsPlanner(config,topic,recipe,receipt=receipt))
+            request=scripts.request(config,category='mixed',purpose='video')
+            script_id=scripts.submit(request,'automation:shorts');self.link(identifier,attempt,script_attempt_id=script_id)
+            scripts.run(script_id);draft=scripts.get(script_id)
+            if draft['status']!='completed':return {'status':'needs_reconciliation' if draft['status']=='needs_reconciliation' else 'failed','error':draft.get('error') or 'Local screenplay did not validate'}
+        script_id=draft['attempt_id']
         videos=CloudVideoService(self.storage.db_path);quote=videos.quote(script_id,'automation:shorts')
         if quote.get('estimate_usd') not in ('0','0.0',0):raise ValueError('Automation cannot authorize a paid video quote')
         production=videos.create(quote['quote_id'],'automation:shorts',True)
@@ -219,6 +233,33 @@ class ShortsService:
         return {'status':'needs_reconciliation','job_id':job_id,'error':'Local batch deadline reached; inspect existing workers and IDs, never resubmit'}
 
 
+    def paid_script(self,identifier: str,attempt: int,config: Any,scripts: Any=None) -> dict[str,Any] | None:
+        """Quote-bound paid screenplay under an owner standing authorization.
+
+        Returns None when nothing was submitted (no authorization, budget, key or
+        model access). A submitted request is returned as saved, never repeated.
+        """
+        from app.automation.authorizations import StandingAuthorizations
+        from app.automation.clock import utc_now
+        from app.services.openai_script_service import PaidScriptError
+        now=utc_now(self.storage.clock)
+        with self.storage.connect() as conn:
+            rows=[dict(r) for r in conn.execute("SELECT * FROM standing_authorizations WHERE status='active' ORDER BY created_at")]
+        chosen=next((r['authorization_id'] for r in rows if config.script_provider in json.loads(r['providers_json'])
+            and datetime.fromisoformat(r['expires_at'])>now),None)
+        if not chosen or self.settings.daily_budget_usd<=0:return None
+        scripts=scripts or ScriptGenerationService(self.storage.db_path)
+        actor='automation:standing:'+chosen
+        try:
+            request=scripts.request(config,category='mixed',purpose='video')
+            quote=scripts.quote(request,actor)
+            script_id=StandingAuthorizations(self.storage,self.settings).submit_script(chosen,quote['quote_id'],request,scripts)
+        except (ValueError,PaidScriptError):
+            return None  # Rejected before any provider generation request.
+        self.link(identifier,attempt,script_attempt_id=script_id)
+        scripts.run(script_id)
+        return scripts.get(script_id)
+
     def record_metrics(self,value: dict[str,Any],config: Any,job_id: str,start: float) -> None:
         selected=[s for s in value['shots'] if s['selected'] and (s.get('usage') or {}).get('ltx_seconds',0)+(s.get('usage') or {}).get('wan_seconds',0)>0]
         neural=sum((s.get('usage') or {}).get('ltx_seconds',0)+(s.get('usage') or {}).get('wan_seconds',0) for s in selected)
@@ -238,4 +279,7 @@ def dispatch_automation(target: str) -> None:
     if target.startswith('episode:'):
         from app.automation.series.episodes import EpisodeService
         EpisodeService(os.getenv('DATABASE_PATH','data/trends.db')).process(target.split(':',1)[1]);return
+    if target.startswith('autocast:'):
+        from app.automation.series.auto_cast import AutoCastService
+        AutoCastService(os.getenv('DATABASE_PATH','data/trends.db')).process(target.split(':',1)[1]);return
     raise ValueError('Unknown automation generation task')
